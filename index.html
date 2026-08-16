@@ -3,7 +3,7 @@
 <title>WoA Live Intelligence Platform</title>
 <style>
 :root{--panel:rgba(255,255,255,.075);--panel2:rgba(255,255,255,.11);--line:rgba(148,197,253,.26);--text:#f7fbff;--muted:#b8d7f5;--good:#38d996;--bad:#ff6b7d;--warn:#facc15;--info:#38bdf8;--purple:#a78bfa;--g9:#facc15;--g8:#ef4444;--g7:#f59e0b;--g6:#a855f7;--g5:#3b82f6;--g4:#22c55e;--gunknown:#475569;--radius:22px;--shadow:0 24px 70px rgba(0,0,0,.36)}
-*{box-sizing:border-box}body{margin:0;font-family:Inter,"Segoe UI Symbol","Noto Sans Symbols 2","Noto Sans Symbols","Arial Unicode MS",Segoe UI,Arial,sans-serif;color:var(--text);background:radial-gradient(circle at top left,rgba(56,189,248,.24),transparent 30%),radial-gradient(circle at top right,rgba(167,139,250,.18),transparent 28%),linear-gradient(135deg,#06111f,#0b1f36 52%,#102a44);min-height:100vh}button,input,select{font:inherit}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--text);background:radial-gradient(circle at top left,rgba(56,189,248,.24),transparent 30%),radial-gradient(circle at top right,rgba(167,139,250,.18),transparent 28%),linear-gradient(135deg,#06111f,#0b1f36 52%,#102a44);min-height:100vh}button,input,select{font:inherit}
 .wrap{width:min(1780px,calc(100% - 22px));margin:auto;padding:12px 0 42px}.glass{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(16px);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
 .top{display:grid;grid-template-columns:auto 1fr 190px 170px;gap:12px;align-items:end;padding:12px}.brand{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.07);font-weight:900;letter-spacing:.04em;text-transform:uppercase;font-size:12px;white-space:nowrap}.dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--good),var(--info));box-shadow:0 0 18px rgba(56,189,248,.9)}
 label{display:block;font-size:11px;color:var(--muted);font-weight:900;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px}.searchbox{display:grid;grid-template-columns:1fr 116px;gap:8px}.input,.select,.btn{width:100%;min-height:44px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:#fff;padding:0 12px;outline:none}.select option{background:#0b1f36;color:#fff}.btn{cursor:pointer;font-weight:900;background:linear-gradient(135deg,rgba(56,189,248,.22),rgba(167,139,250,.18))}.msg{font-size:12px;color:#ffe68a;font-weight:800;margin-top:5px;min-height:14px}.warn-banner{display:none;margin:0 0 12px;padding:12px 16px;border-radius:18px;border:1px solid rgba(250,204,21,.35);background:rgba(250,204,21,.12);color:#fff3b0;font-weight:900;font-size:13px;line-height:1.45}.warn-banner.show{display:block}
@@ -23,7 +23,7 @@ label{display:block;font-size:11px;color:var(--muted);font-weight:900;text-trans
 .dynamic-column>.glass{margin-bottom:0}
 .dynamic-hidden{display:none!important}.vault-menu{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px;align-items:start}.vault-menu .glass{margin-bottom:0}.panel-head{padding:14px 16px 0;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.panel-body{padding:14px 16px 16px}.chartbox{height:330px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.035);padding:10px;overflow:hidden}.chip{display:inline-flex;align-items:center;justify-content:center;min-height:30px;padding:0 11px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);font-size:11px;font-weight:900;color:#eaf7ff}
 .table-wrap{overflow:auto;border-top:1px solid var(--line);max-height:560px}table{width:100%;border-collapse:collapse;min-width:980px}th{position:sticky;top:0;background:#0b1f36;color:#f0f8ff;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;padding:12px;border-bottom:1px solid rgba(255,255,255,.14);z-index:2;white-space:nowrap}td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.065);font-size:13px;white-space:nowrap;vertical-align:middle}tr:hover{background:rgba(255,255,255,.045)}
-.player{font-weight:900;color:#fff;cursor:pointer;text-decoration:none;font-family:Inter,"Segoe UI Symbol","Noto Sans Symbols 2","Noto Sans Symbols","Arial Unicode MS",Segoe UI,Arial,sans-serif}.player:hover{color:#bae6fd}
+.player{font-weight:900;color:#fff;cursor:pointer;text-decoration:none}.player:hover{color:#bae6fd}
 .g-badge{display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:24px;padding:0 9px;border-radius:999px;font-size:10px;font-weight:900;letter-spacing:.04em;border:1px solid currentColor;background:rgba(255,255,255,.06)}
 .g9{color:var(--g9)}.g8{color:var(--g8)}.g7{color:var(--g7)}.g6{color:var(--g6)}.g5{color:var(--g5)}.g4{color:var(--g4)}.gunknown{color:#cbd5e1}
 .g-card{position:relative;border-top:3px solid var(--g-accent,var(--gunknown));border-left:3px solid var(--g-accent,var(--gunknown))}
@@ -36,7 +36,7 @@ label{display:block;font-size:11px;color:var(--muted);font-weight:900;text-trans
 .performance-score{display:inline-flex;align-items:center;justify-content:center;min-width:64px;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:900;border:1px solid currentColor;background:rgba(255,255,255,.06)}
 .performance-score.high{color:#9ff0c7}.performance-score.mid{color:#ffe68a}.performance-score.low{color:#ffb6c0}.performance-score.limited{color:#cbd5e1}
 .matrix-cell{display:inline-flex;align-items:center;justify-content:center;min-width:58px;padding:4px 8px;border-radius:10px;font-size:11px;font-weight:900}
-.matrix-cell.met{color:#9ff0c7;background:rgba(56,217,150,.13)}.matrix-cell.fail{color:#ffb6c0;background:rgba(255,107,125,.13)}.matrix-cell.na{color:#cbd5e1;background:rgba(148,163,184,.12)}
+.matrix-cell.met{color:#9ff0c7;background:rgba(56,217,150,.13)}.matrix-cell.fail{color:#ffb6c0;background:rgba(255,107,125,.13)}.matrix-cell.na{color:#cbd5e1;background:rgba(148,163,184,.12)}.matrix-cell.exempted{color:#7dd3fc;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.35)}
 .floating-up-btn{position:fixed;right:22px;bottom:22px;z-index:1200;width:48px;height:48px;border-radius:50%;border:1px solid var(--line);background:linear-gradient(135deg,rgba(56,189,248,.34),rgba(167,139,250,.28));color:#fff;font-size:22px;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow)}
 .floating-up-btn:hover{background:linear-gradient(135deg,rgba(56,189,248,.55),rgba(167,139,250,.42))}
 .modal-up-btn{position:absolute;right:18px;bottom:18px;z-index:20;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:linear-gradient(135deg,rgba(56,189,248,.34),rgba(167,139,250,.28));color:#fff;font-size:20px;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer}
@@ -569,6 +569,32 @@ const CONSOLIDATED_EVENTS=[
  {key:'vaults',label:'Vaults',short:'Vaults',type:'vault'}
 ];
 
+
+function currentExemptionsForMember(member){
+ const today=todayDate();
+ return (state.data.eventExemptions||[]).filter(x=>{
+  if(!exemptionActive(x))return false;
+  const pid=key(member?._id), pname=key(member?._name);
+  const matches=(pid&&key(x._id)===pid)||(pname&&key(x._name)===pname);
+  if(!matches)return false;
+  return exemptionLifecycleStatus(x,today)==='Active';
+ });
+}
+function activeExemptionReason(member){
+ const rows=currentExemptionsForMember(member);
+ const reasons=[...new Set(rows.map(x=>clean(x._reason)).filter(Boolean))];
+ return reasons.join(', ');
+}
+function consolidatedClassificationCell(r){
+ if(r._activeExemption && r._eligible===0){
+  const reason=r._exemptReason?` title="${escAttr(r._exemptReason)}"`:'';
+  return `<span class="exempt-tag"${reason}>🔵 Exempt</span>`;
+ }
+ const base=consolidatedBadge(r._classification);
+ if(!r._activeExemption)return base;
+ const reason=r._exemptReason?` title="${escAttr(r._exemptReason)}"`:'';
+ return `${base}<span class="exempt-tag"${reason}>🔵 Exempt</span>`;
+}
 function consolidatedBadge(label){
  const cls=label==='Consistent Performer'?'met':label==='Consistent Underperformer'?'fail':label==='Mixed Performance'?'warnb':'expired';
  return `<span class="badge ${cls}">${esc(label)}</span>`;
@@ -578,7 +604,15 @@ function scorePill(rate,limited=false){
  return `<span class="performance-score ${cls}">${limited?'Limited':rate.toFixed(1)+'%'}</span>`;
 }
 function matrixCell(stat){
- if(!stat||!stat.eligible)return '<span class="matrix-cell na">—</span>';
+ if(!stat)return '<span class="matrix-cell na">—</span>';
+ if(!stat.eligible && stat.exempt){
+  if(stat.exemptParticipated){
+   const observed=stat.observed?Math.round(stat.observedSuccess/stat.observed*100):0;
+   return `<span class="matrix-cell exempted">Exempt ${observed}%</span>`;
+  }
+  return '<span class="matrix-cell exempted">Exempt</span>';
+ }
+ if(!stat.eligible)return '<span class="matrix-cell na">—</span>';
  const rate=stat.success/stat.eligible*100;
  const cls=rate>=80?'met':rate<=40?'fail':'na';
  return `<span class="matrix-cell ${cls}">${rate.toFixed(0)}%</span>`;
@@ -601,7 +635,10 @@ function consolidatedPerformanceRows(){
 
  const result=new Map(roster.map(m=>[key(m._id||m._name),{
   _id:m._id,_name:m._name,_g:m._g,_status:m._status,
-  _success:0,_fail:0,_eligible:0,_eventTypes:new Set(),_events:{}
+  _success:0,_fail:0,_eligible:0,
+  _exemptRecords:0,_exemptParticipated:0,
+  _observedSuccess:0,_observedRecords:0,
+  _eventTypes:new Set(),_events:{}
  }]));
 
  CONSOLIDATED_EVENTS.forEach(cfg=>{
@@ -620,29 +657,52 @@ function consolidatedPerformanceRows(){
     if(!memberIsActiveForDate(member._name,eventDate))return;
     const row=bestPlayerRow(groupRows,member,cfg.key);
     const participated=row?rowHasParticipation(cfg.key,row):false;
-    // Exemptions remove the event from consolidated accountability even when
-    // the player chose to participate.
-    if(isPlayerExempt(eventId,member,eventDate))return;
-
-    let eligible=false,success=false;
-    if(cfg.type==='vault'){
-     eligible=true;
-     success=!!row&&rowHasParticipation('vaults',row);
-    }else{
-     const target=num(row?._target)||num(meta._target);
-     if(target<=0)return;
-     eligible=true;
-     success=!!row&&num(row._score)>=target;
-    }
-    if(!eligible)return;
-
+    const exempt=isPlayerExempt(eventId,member,eventDate);
     const rk=key(member._id||member._name),rec=result.get(rk);
     if(!rec)return;
+
+    let target=0,observedSuccess=false,accountabilitySuccess=false;
+    if(cfg.type==='vault'){
+     observedSuccess=!!row&&rowHasParticipation('vaults',row);
+     accountabilitySuccess=observedSuccess;
+    }else{
+     target=num(row?._target)||num(meta._target);
+     if(target<=0)return;
+     observedSuccess=!!row&&participated&&num(row._score)>=target;
+     accountabilitySuccess=!!row&&num(row._score)>=target;
+    }
+
+    rec._events[cfg.key]=rec._events[cfg.key]||{
+     eligible:0,success:0,fail:0,
+     exempt:0,exemptParticipated:0,
+     observed:0,observedSuccess:0
+    };
+
+    // Observed performance records what the player actually did, including while exempt.
+    if(participated){
+     rec._observedRecords++;
+     rec._events[cfg.key].observed++;
+     if(observedSuccess){
+      rec._observedSuccess++;
+      rec._events[cfg.key].observedSuccess++;
+     }
+    }
+
+    // Exempt records remain visible but never create an accountability success/failure.
+    if(exempt){
+     rec._exemptRecords++;
+     rec._events[cfg.key].exempt++;
+     if(participated){
+      rec._exemptParticipated++;
+      rec._events[cfg.key].exemptParticipated++;
+     }
+     return;
+    }
+
     rec._eligible++;
     rec._eventTypes.add(cfg.key);
-    rec._events[cfg.key]=rec._events[cfg.key]||{eligible:0,success:0,fail:0};
     rec._events[cfg.key].eligible++;
-    if(success){
+    if(accountabilitySuccess){
      rec._success++;
      rec._events[cfg.key].success++;
     }else{
@@ -656,9 +716,18 @@ function consolidatedPerformanceRows(){
  return [...result.values()].map(r=>{
   const coverage=r._eventTypes.size;
   const rate=r._eligible?r._success/r._eligible*100:0;
+  const observedRate=r._observedRecords?r._observedSuccess/r._observedRecords*100:0;
   const limited=r._eligible<5||coverage<3;
   const classification=limited?'Limited Data':rate>=80?'Consistent Performer':rate<=40?'Consistent Underperformer':'Mixed Performance';
-  return {...r,_coverage:coverage,_rate:rate,_limited:limited,_classification:classification};
+  const member={_id:r._id,_name:r._name};
+  const activeEx=currentExemptionsForMember(member);
+  return {
+   ...r,
+   _coverage:coverage,_rate:rate,_observedRate:observedRate,
+   _limited:limited,_classification:classification,
+   _activeExemption:activeEx.length>0,
+   _exemptReason:activeExemptionReason(member)
+  };
  });
 }
 function renderConsolidatedPerformance(){
@@ -674,7 +743,8 @@ function renderConsolidatedPerformance(){
   'Consistent Performer':performers.length,
   'Mixed Performance':mixed.length,
   'Consistent Underperformer':under.length,
-  'Limited Data':limited.length
+  'Active Exemption':rows.filter(r=>r._activeExemption).length,
+  'Limited Data':limited.filter(r=>!r._activeExemption).length
  };
  const byG={};
  rows.filter(r=>!r._limited&&r._eligible>0).forEach(r=>{
@@ -690,7 +760,7 @@ function renderConsolidatedPerformance(){
  $('app').innerHTML=`
  <section class="content-head glass">
   <h2>Consolidated Performance</h2>
-  <p class="sub">Live cross-event intelligence across Tinman, Dark Omens, Trials, Ragnarök, Chest Points and Vaults. Rankings recalculate automatically whenever results, membership, G-Levels or exemptions change. Historical results count only while each player was eligible. Any valid exemption removes that event from performance accountability, even if the player chose to participate.</p>
+  <p class="sub">Live cross-event intelligence across Tinman, Dark Omens, Trials, Ragnarök, Chest Points and Vaults. Rankings recalculate automatically whenever results, membership, G-Levels or exemptions change. Historical results count only while each player was eligible. Every active player remains visible. Exempt events are shown separately and never create penalties; participation while exempt contributes only to Observed Performance.</p>
  </section>
 
  <section class="kpis">${kpiHtml([
@@ -698,8 +768,9 @@ function renderConsolidatedPerformance(){
   ['Consistent Performers',performers.length,'80%+ success, at least 5 records across 3 event types'],
   ['Mixed Performance',mixed.length,'Between performer and underperformer thresholds'],
   ['Consistent Underperformers',under.length,'60%+ failures, at least 5 records across 3 event types'],
-  ['Limited Data',limited.length,'Insufficient event coverage'],
-  ['Overall Success',overallRate.toFixed(1)+'%','Successful eligible records']
+  ['Active Exemptions',rows.filter(r=>r._activeExemption).length,'Currently exempt players shown but not penalised'],
+  ['Limited Data',limited.filter(r=>!r._activeExemption).length,'Insufficient non-exempt event coverage'],
+  ['Overall Success',overallRate.toFixed(1)+'%','Successful non-exempt eligible records']
  ])}</section>
 
  <section class="chart-grid">
@@ -717,14 +788,16 @@ function renderConsolidatedPerformance(){
  ${tableCard(
   'Consolidated Player Performance',
   [...rows].sort((a,b)=>a._limited-b._limited||b._rate-a._rate||b._eligible-a._eligible||String(a._name).localeCompare(String(b._name))),
-  ['Rank','Player','G-Level','Classification','Success Score','Successful','Failed','Eligible Records','Event Types','Tinman','Dark Omens','Trials','Ragnarök','Chest Points','Vaults'],
+  ['Rank','Player','G-Level','Classification','Accountability Score','Observed Performance','Successful','Failed','Eligible Records','Exempt Records','Exempt Participated','Event Types','Tinman','Dark Omens','Trials','Ragnarök','Chest Points','Vaults'],
   (r,i)=>[
-   i+1,pLink(r._name),gBadge(r._g),consolidatedBadge(r._classification),scorePill(r._rate,r._limited),
-   fmt(r._success),fmt(r._fail),fmt(r._eligible),fmt(r._coverage),
+   i+1,pLink(r._name),gBadge(r._g),consolidatedClassificationCell(r),
+   scorePill(r._rate,r._eligible===0||r._limited),
+   r._observedRecords?`<span class="performance-score ${r._observedRate>=80?'high':r._observedRate<=40?'low':'mid'}">${r._observedRate.toFixed(1)}%</span>`:'<span class="performance-score limited">—</span>',
+   fmt(r._success),fmt(r._fail),fmt(r._eligible),fmt(r._exemptRecords),fmt(r._exemptParticipated),fmt(r._coverage),
    matrixCell(r._events.tinman),matrixCell(r._events.darkOmens),matrixCell(r._events.trials),
    matrixCell(r._events.ragnarok),matrixCell(r._events.chestpoints),matrixCell(r._events.vaults)
   ],
-  'Success = target met or vault built. Failure = non-exempt eligible result below target, missing result, or missing vault. Valid exemptions are excluded from accountability even when the player participated.'
+  'Accountability uses only non-exempt eligible records. Exempt records remain visible, and any participation while exempt contributes only to Observed Performance — never to failure or repeat-underperformance penalties.'
  )}
  `;
  chartPie('conClass',classificationCounts);
