@@ -146,12 +146,18 @@ async function initLive(){
 
  }catch(e){
   console.error('WoA cached-data startup error',e);
+  console.error('WoA cached-data diagnostics',{
+   message:e?.message||String(e),
+   dataKeys:Object.keys(state.data||{}),
+   mappedCounts:Object.fromEntries(Object.entries(state.data||{}).map(([k,v])=>[k,Array.isArray(v)?v.length:null]))
+  });
   blockStrictDashboard();
  }
 }
 const MODULES=[['overview','🏠 Overview'],['growth','📈 Growth'],['consolidated','🏆 Consolidated Performance'],['tinman','⚔ Tinman'],['darkOmens','🌑 Dark Omens'],['trials','🏛 Trials'],['ragnarok','🪓 Ragnarök'],['chestpoints','🎯 Chest Points'],['vaults','🏰 Vaults'],['exemptions','🛡 Exemptions']];
 const state={module:'overview',selected:'',g:'',profileTab:'summary',player:'',data:{}};
 const $=id=>document.getElementById(id); const clean=s=>(s??'').toString().trim(); const key=s=>clean(s).toUpperCase().replace(/\s+/g,''); const num=v=>{let n=parseFloat(clean(v).replace(/,/g,''));return isNaN(n)?0:n}; const fmt=n=>Number(num(n)||0).toLocaleString(); const pct=(a,b)=>b?((a/b)*100).toFixed(1)+'%':'0%'; const short=n=>{n=num(n); if(Math.abs(n)>=1e9)return(n/1e9).toFixed(2)+'B'; if(Math.abs(n)>=1e6)return(n/1e6).toFixed(1)+'M'; if(Math.abs(n)>=1e3)return(n/1e3).toFixed(1)+'K'; return fmt(n)}; const esc=s=>clean(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); const escAttr=s=>esc(s).replace(/'/g,'&#39;');
+function canonicalHeader(s){return clean(s).toLowerCase().replace(/[^a-z0-9]+/g,' ')}
 const gClass=g=>{g=clean(g).toUpperCase();return /^G[4-9]$/.test(g)?g.toLowerCase():'gunknown'};
 const gColor=g=>({G9:'var(--g9)',G8:'var(--g8)',G7:'var(--g7)',G6:'var(--g6)',G5:'var(--g5)',G4:'var(--g4)'}[clean(g).toUpperCase()]||'var(--gunknown)');
 const gBadge=g=>{const v=clean(g)||'Unknown';return `<span class="g-badge ${gClass(v)}">${esc(v)}</span>`};
