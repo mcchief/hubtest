@@ -82,7 +82,8 @@ async function fetchCachedPayload(){
   try{
    const ctrl=new AbortController();
    const timer=setTimeout(()=>ctrl.abort(),12000);
-   const res=await fetch('./data.json?v='+Date.now(),{
+   const DATA_URL='https://raw.githubusercontent.com/mcchief/hubtest/main/data.json';
+   const res=await fetch(DATA_URL+'?v='+Date.now(),{
     cache:'no-store',
     signal:ctrl.signal
    });
@@ -102,13 +103,34 @@ async function fetchCachedPayload(){
  throw new Error(lastError||'Unable to load data package');
 }
 
+let AUTO_DATA_CHECK_TIMER=null;
+let LAST_DATA_SIGNATURE='';
+function payloadSignature(raw){
+ try{return JSON.stringify(REQUIRED_DATASETS.map(k=>[k,Array.isArray(raw[k])?raw[k].length:-1,raw[k]?.[raw[k].length-1]||null]));}
+ catch(e){return String(Date.now())}
+}
+async function checkForFreshData(){
+ try{
+  const raw=await fetchCachedPayload();
+  const sig=payloadSignature(raw);
+  if(LAST_DATA_SIGNATURE&&sig!==LAST_DATA_SIGNATURE){
+   console.info('New WoA intelligence data detected; refreshing dashboard.');
+   await initLive(true);
+  }
+ }catch(e){console.warn('Automatic WoA data freshness check failed',e);}
+}
+function startAutomaticDataChecks(){
+ if(AUTO_DATA_CHECK_TIMER)clearInterval(AUTO_DATA_CHECK_TIMER);
+ AUTO_DATA_CHECK_TIMER=setInterval(checkForFreshData,5*60*1000);
+}
+
 function mapMember(r){return{_id:field(r,['Player ID','ID']),_name:field(r,['Official Player Name','Player Name','Name','Player']),_g:field(r,['Current G-Level','G-Level','G Level']),_vault:num(field(r,['Current Vault Level','Vault Level'])),_might:num(field(r,['Current Might','Might'])),_status:field(r,['Current Status','Status'])||'Active',_join:field(r,['Join Date','Date Joined']),_left:field(r,['Date Left','Left Date'])}}
 function mapEventRow(r){return{_eventId:field(r,['Event ID','EventID']),_event:field(r,['Event Date','Date','Week']),_available:num(field(r,['Available Members','Eligible Members'])),_rank:num(field(r,['Rank'])),_name:field(r,['Player Name','Official Player Name','Name','Player']),_id:field(r,['Player ID','ID']),_g:field(r,['G-Level','G Level','Current G-Level']),_vault:num(field(r,['Vault Level','Current Vault Level'])),_might:num(field(r,['Current Might','Might'])),_target:num(field(r,['Target','Required','Minimum'])),_score:num(field(r,['Result / Score','Score','Points','Essence','Result','Value'])),_status:field(r,['Result Status','Status','Current Status']),_buildTime:field(r,['Local Build Time','Build Time']),_resetOffset:field(r,['Reset Offset']),_utcOffset:field(r,['UTC Offset']),_chests:num(field(r,['Chests','Chest Count']))}}
 function mapEventSetup(r){return{_id:field(r,['Event ID','EventID']),_name:field(r,['Event Name','Name']),_type:field(r,['Event Type','Type']),_date:field(r,['Event Date','Date']),_target:num(field(r,['Target','Default Target'])),_available:num(field(r,['Available Members','Eligible Members']))}}
 function normalizeWeek(v){v=clean(v);if(!v)return'';let d=parseAnyDate(v);if(d&&!isNaN(d))return d.toISOString().slice(0,10);return v}
 function mapGrowth(r){return{_name:field(r,['Player Name','Official Player Name','Name','Player']),_week:normalizeWeek(field(r,['Week','Week Start','Event Date','Date'])),_might:num(field(r,['Current Might','Might','Total Might'])),_g:field(r,['G-Level','G Level','Current G-Level'])}}
 function mapEventExemption(r){return{_eventId:field(r,['Event ID','EventID','Event Id']),_event:field(r,['Event Date','Date','Week']),_eventName:field(r,['Event Name','Name','Event','Event Type']),_id:field(r,['Player ID','ID','Player Id']),_name:field(r,['Player Name','Official Player Name','Name','Player']),_reason:field(r,['Reason','Exemption Reason','Notes','Comment']),_fromDate:field(r,['From Date','Start Date','Date From','Exemption From']),_toDate:field(r,['To Date','End Date','Date To','Exemption To']),_status:field(r,['Status','Exemption Status','Current Status'])||'Active'}}
-async function initLive(){
+async function initLive(isBackgroundRefresh=false){
  const app=document.getElementById('app'),
        searchMsg=document.getElementById('searchMsg'),
        retryBtn=document.getElementById('strictRetryBtn');
@@ -119,6 +141,7 @@ async function initLive(){
   app.innerHTML='';
 
   const raw=await fetchCachedPayload();
+  LAST_DATA_SIGNATURE=payloadSignature(raw);
 
   state.data={
    members:(raw.members||[]).map(mapMember).filter(r=>r._name),
@@ -143,6 +166,7 @@ async function initLive(){
   updateHealthWarnings();
   searchMsg.textContent='Intelligence synchronized. All required data is loaded and verified.';
   unlockStrictDashboard();
+  startAutomaticDataChecks();
 
  }catch(e){
   console.error('WoA cached-data startup error',e);
