@@ -299,7 +299,7 @@ function latestGrowthRows(){const w=latestGrowthWeek();return w?(state.data.grow
 function isActiveGrowthPlayer(r){const m=memberByName(r._name);return !m || !/(left|removed|inactive|pending)/i.test(m._status)}
 function latestGrowthSnapshot(){return latestGrowthRows().filter(isActiveGrowthPlayer).map(r=>{const m=memberByName(r._name)||{};return {...r,_g:m._g||memberG(r._name),_vault:m._vault||0,_status:m._status||'Active'}})}
 function latestGrowthTotal(){const snap=latestGrowthSnapshot();return snap.length?snap.reduce((s,r)=>s+r._might,0):activeRosterMembers().reduce((s,m)=>s+m._might,0)}
-function renderHero(){const current=activeRosterMembers(),active=activeMembers(),total=latestGrowthTotal(),weeks=growthWeeks();$('heroCards').innerHTML=kpiHtml([['Current Members',current.length],['Active Players',active.length],['Clan Might',short(total)],['Growth Weeks',weeks.length]])}
+function renderHero(){const current=activeRosterMembers(),active=current,total=latestGrowthTotal(),weeks=growthWeeks();$('heroCards').innerHTML=kpiHtml([['Current Members',current.length],['Active Players',active.length],['Clan Might',short(total)],['Growth Weeks',weeks.length]])}
 
 function memberIsActiveForDate(name,eventDate){
  const m=memberByName(name);
