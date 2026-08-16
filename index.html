@@ -586,14 +586,21 @@ function activeExemptionReason(member){
  return reasons.join(', ');
 }
 function consolidatedClassificationCell(r){
- if(r._activeExemption && r._eligible===0){
+ // Active/open-ended exemptions are classified from Observed Performance only
+ // when the observed result is Mixed Performance or Consistent Performer.
+ // Observed underperformance never labels an exempt player as an underperformer.
+ if(r._activeExemption){
   const reason=r._exemptReason?` title="${escAttr(r._exemptReason)}"`:'';
+  let observedClass='';
+  if(r._observedRecords>0){
+   observedClass=r._observedRate>=80?'Consistent Performer':r._observedRate>40?'Mixed Performance':'';
+  }
+  if(observedClass){
+   return `${consolidatedBadge(observedClass)}<span class="exempt-tag"${reason}>🔵 Exempt</span>`;
+  }
   return `<span class="exempt-tag"${reason}>🔵 Exempt</span>`;
  }
- const base=consolidatedBadge(r._classification);
- if(!r._activeExemption)return base;
- const reason=r._exemptReason?` title="${escAttr(r._exemptReason)}"`:'';
- return `${base}<span class="exempt-tag"${reason}>🔵 Exempt</span>`;
+ return consolidatedBadge(r._classification);
 }
 function consolidatedBadge(label){
  const cls=label==='Consistent Performer'?'met':label==='Consistent Underperformer'?'fail':label==='Mixed Performance'?'warnb':'expired';
