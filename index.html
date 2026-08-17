@@ -634,9 +634,9 @@ function consolidatedBadge(label){
  const cls=label==='Consistent Performer'?'met':label==='Consistent Underperformer'?'fail':label==='Mixed Performance'?'warnb':'expired';
  return `<span class="badge ${cls}">${esc(label)}</span>`;
 }
-function scorePill(rate,limited=false){
- const cls=limited?'limited':rate>=80?'high':rate<=40?'low':'mid';
- return `<span class="performance-score ${cls}">${limited?'Limited':rate.toFixed(1)+'%'}</span>`;
+function scorePill(rate,limited=false,waived=false){
+ const cls=waived?'limited':limited?'limited':rate>=80?'high':rate<=40?'low':'mid';
+ return `<span class="performance-score ${cls}">${waived?'Waived':limited?'Limited':rate.toFixed(1)+'%'}</span>`;
 }
 function matrixCell(stat){
  if(!stat)return '<span class="matrix-cell na">—</span>';
@@ -830,7 +830,7 @@ function renderConsolidatedPerformance(){
   ['Rank','Player','G-Level','Classification','Accountability Score','Observed Performance','Successful','Failed','Eligible Records','Exempt Records','Exempt Participated','Event Types','Tinman','Dark Omens','Trials','Ragnarök','Chest Points','Vaults'],
   (r,i)=>[
    i+1,pLink(r._name),gBadge(r._g),consolidatedClassificationCell(r),
-   scorePill(r._rate,r._eligible===0||r._limited),
+   scorePill(r._rate,r._eligible===0||r._limited,r._activeExemption&&(consolidatedDisplayClass(r)==='Consistent Performer'||consolidatedDisplayClass(r)==='Mixed Performance')),
    r._observedRecords?`<span class="performance-score ${r._observedRate>=80?'high':r._observedRate<=40?'low':'mid'}">${r._observedRate.toFixed(1)}%</span>`:'<span class="performance-score limited">—</span>',
    fmt(r._success),fmt(r._fail),fmt(r._eligible),fmt(r._exemptRecords),fmt(r._exemptParticipated),fmt(r._coverage),
    matrixCell(r._events.tinman),matrixCell(r._events.darkOmens),matrixCell(r._events.trials),
