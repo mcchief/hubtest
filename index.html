@@ -585,22 +585,50 @@ function activeExemptionReason(member){
  const reasons=[...new Set(rows.map(x=>clean(x._reason)).filter(Boolean))];
  return reasons.join(', ');
 }
+function consolidatedDisplayClass(r){
+ // Exempt players may be classified positively from Observed Performance,
+ // but they are never labelled Consistent Underperformer.
+ if(r._activeExemption){
+  if(r._observedRecords>0 && r._observedRate>=80)return 'Consistent Performer';
+  if(r._observedRecords>0 && r._observedRate>40)return 'Mixed Performance';
+  return 'Exempted / Limited';
+ }
+ return r._classification;
+}
+function consolidatedDisplayScore(r){
+ const cls=consolidatedDisplayClass(r);
+ if(r._activeExemption && (cls==='Consistent Performer'||cls==='Mixed Performance'))return r._observedRate;
+ return r._rate;
+}
+function consolidatedSortGroup(r){
+ const cls=consolidatedDisplayClass(r);
+ return cls==='Consistent Performer'?0:
+        cls==='Mixed Performance'?1:
+        cls==='Consistent Underperformer'?2:3;
+}
+function consolidatedSortRows(rows){
+ return [...rows].sort((a,b)=>{
+  const ga=consolidatedSortGroup(a),gb=consolidatedSortGroup(b);
+  if(ga!==gb)return ga-gb;
+  const sa=consolidatedDisplayScore(a),sb=consolidatedDisplayScore(b);
+  if(ga===2 && sa!==sb)return sa-sb; // worst underperformers first
+  if(sa!==sb)return sb-sa;           // strongest first in all other groups
+  const ea=(a._eligible||0)+(a._observedRecords||0);
+  const eb=(b._eligible||0)+(b._observedRecords||0);
+  if(ea!==eb)return eb-ea;
+  return String(a._name).localeCompare(String(b._name));
+ });
+}
 function consolidatedClassificationCell(r){
- // Active/open-ended exemptions are classified from Observed Performance only
- // when the observed result is Mixed Performance or Consistent Performer.
- // Observed underperformance never labels an exempt player as an underperformer.
+ const displayClass=consolidatedDisplayClass(r);
  if(r._activeExemption){
   const reason=r._exemptReason?` title="${escAttr(r._exemptReason)}"`:'';
-  let observedClass='';
-  if(r._observedRecords>0){
-   observedClass=r._observedRate>=80?'Consistent Performer':r._observedRate>40?'Mixed Performance':'';
-  }
-  if(observedClass){
-   return `${consolidatedBadge(observedClass)}<span class="exempt-tag"${reason}>🔵 Exempt</span>`;
+  if(displayClass==='Consistent Performer'||displayClass==='Mixed Performance'){
+   return `${consolidatedBadge(displayClass)}<span class="exempt-tag"${reason}>🔵 Exempt</span>`;
   }
   return `<span class="exempt-tag"${reason}>🔵 Exempt</span>`;
  }
- return consolidatedBadge(r._classification);
+ return consolidatedBadge(displayClass);
 }
 function consolidatedBadge(label){
  const cls=label==='Consistent Performer'?'met':label==='Consistent Underperformer'?'fail':label==='Mixed Performance'?'warnb':'expired';
@@ -739,10 +767,11 @@ function consolidatedPerformanceRows(){
 }
 function renderConsolidatedPerformance(){
  const rows=consolidatedPerformanceRows();
- const performers=rows.filter(r=>r._classification==='Consistent Performer').sort((a,b)=>b._rate-a._rate||b._eligible-a._eligible||String(a._name).localeCompare(String(b._name)));
- const under=rows.filter(r=>r._classification==='Consistent Underperformer').sort((a,b)=>a._rate-b._rate||b._eligible-a._eligible||String(a._name).localeCompare(String(b._name)));
- const mixed=rows.filter(r=>r._classification==='Mixed Performance');
- const limited=rows.filter(r=>r._classification==='Limited Data');
+ const performers=consolidatedSortRows(rows.filter(r=>consolidatedDisplayClass(r)==='Consistent Performer'));
+ const mixed=consolidatedSortRows(rows.filter(r=>consolidatedDisplayClass(r)==='Mixed Performance'));
+ const under=consolidatedSortRows(rows.filter(r=>consolidatedDisplayClass(r)==='Consistent Underperformer'));
+ const exemptLimited=consolidatedSortRows(rows.filter(r=>consolidatedDisplayClass(r)==='Exempted / Limited'));
+ const limited=rows.filter(r=>!r._activeExemption&&r._classification==='Limited Data');
  const eligibleRecords=rows.reduce((s,r)=>s+r._eligible,0);
  const successfulRecords=rows.reduce((s,r)=>s+r._success,0);
  const overallRate=eligibleRecords?successfulRecords/eligibleRecords*100:0;
@@ -750,8 +779,8 @@ function renderConsolidatedPerformance(){
   'Consistent Performer':performers.length,
   'Mixed Performance':mixed.length,
   'Consistent Underperformer':under.length,
-  'Active Exemption':rows.filter(r=>r._activeExemption).length,
-  'Limited Data':limited.filter(r=>!r._activeExemption).length
+  'Exempted / Limited':exemptLimited.length,
+  'Limited Data':limited.length
  };
  const byG={};
  rows.filter(r=>!r._limited&&r._eligible>0).forEach(r=>{
@@ -761,8 +790,11 @@ function renderConsolidatedPerformance(){
   byG[g].eligible+=r._eligible;
  });
  const byGRate=Object.fromEntries(Object.entries(byG).map(([g,v])=>[g,v.eligible?v.success/v.eligible*100:0]));
- const ranked=rows.filter(r=>!r._limited).sort((a,b)=>b._rate-a._rate||b._eligible-a._eligible);
- const bottom=[...ranked].sort((a,b)=>a._rate-b._rate||b._eligible-a._eligible);
+ const ranked=consolidatedSortRows(rows.filter(r=>{
+  const c=consolidatedDisplayClass(r);
+  return c==='Consistent Performer'||c==='Mixed Performance'||c==='Consistent Underperformer';
+ }));
+ const bottom=[...ranked].sort((a,b)=>consolidatedDisplayScore(a)-consolidatedDisplayScore(b)||String(a._name).localeCompare(String(b._name)));
 
  $('app').innerHTML=`
  <section class="content-head glass">
@@ -772,11 +804,11 @@ function renderConsolidatedPerformance(){
 
  <section class="kpis">${kpiHtml([
   ['Players Assessed',rows.length,'Current active roster'],
-  ['Consistent Performers',performers.length,'80%+ success, at least 5 records across 3 event types'],
-  ['Mixed Performance',mixed.length,'Between performer and underperformer thresholds'],
+  ['Consistent Performers',performers.length,'Includes exempt players qualifying through 80%+ Observed Performance'],
+  ['Mixed Performance',mixed.length,'Includes exempt players qualifying through Observed Performance'],
   ['Consistent Underperformers',under.length,'60%+ failures, at least 5 records across 3 event types'],
-  ['Active Exemptions',rows.filter(r=>r._activeExemption).length,'Currently exempt players shown but not penalised'],
-  ['Limited Data',limited.filter(r=>!r._activeExemption).length,'Insufficient non-exempt event coverage'],
+  ['Exempted / Limited',exemptLimited.length,'Exempt players without Performer or Mixed observed classification'],
+  ['Limited Data',limited.length,'Insufficient non-exempt event coverage'],
   ['Overall Success',overallRate.toFixed(1)+'%','Successful non-exempt eligible records']
  ])}</section>
 
@@ -788,13 +820,13 @@ function renderConsolidatedPerformance(){
  </section>
 
  <section class="intel-grid auto-pack" data-pack-max="2">
-  ${card('Top Consistent Performers','Players sustaining the strongest target compliance across multiple event types.',performers.length?`<ul class="list">${performers.slice(0,10).map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g)}</span><span>${r._rate.toFixed(1)}%</span></li>`).join('')}</ul>`:'<div class="empty">No players currently meet the consistent-performer threshold.</div>',performers.length+' players')}
+  ${card('Top Consistent Performers','All Consistent Performers ranked together. Exempt performers use Observed Performance and remain non-accountable.',performers.length?`<ul class="list">${performers.slice(0,10).map(r=>`<li><span>${pLink(r._name)}${r._activeExemption?'<span class="exempt-tag">🔵 Exempt</span>':''}</span><span>${gBadge(r._g)}</span><span>${consolidatedDisplayScore(r).toFixed(1)}%</span></li>`).join('')}</ul>`:'<div class="empty">No players currently meet the consistent-performer threshold.</div>',performers.length+' players')}
   ${card('Consistent Underperformers','Players failing at least 60% of eligible records across sufficient event coverage.',under.length?`<ul class="list">${under.slice(0,10).map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g)}</span><span>${r._rate.toFixed(1)}%</span></li>`).join('')}</ul>`:'<div class="empty">No players currently meet the consistent-underperformer threshold.</div>',under.length+' players')}
  </section>
 
  ${tableCard(
   'Consolidated Player Performance',
-  [...rows].sort((a,b)=>a._limited-b._limited||b._rate-a._rate||b._eligible-a._eligible||String(a._name).localeCompare(String(b._name))),
+  consolidatedSortRows(rows),
   ['Rank','Player','G-Level','Classification','Accountability Score','Observed Performance','Successful','Failed','Eligible Records','Exempt Records','Exempt Participated','Event Types','Tinman','Dark Omens','Trials','Ragnarök','Chest Points','Vaults'],
   (r,i)=>[
    i+1,pLink(r._name),gBadge(r._g),consolidatedClassificationCell(r),
@@ -804,13 +836,13 @@ function renderConsolidatedPerformance(){
    matrixCell(r._events.tinman),matrixCell(r._events.darkOmens),matrixCell(r._events.trials),
    matrixCell(r._events.ragnarok),matrixCell(r._events.chestpoints),matrixCell(r._events.vaults)
   ],
-  'Accountability uses only non-exempt eligible records. Exempt records remain visible, and any participation while exempt contributes only to Observed Performance — never to failure or repeat-underperformance penalties.'
+  'Sorted by classification: Consistent Performer, Mixed Performance, Consistent Underperformer, then Exempted/Limited. Exempt players qualifying as Performer or Mixed from Observed Performance are placed and ranked inside the same category, while remaining fully protected from penalties.'
  )}
  `;
  chartPie('conClass',classificationCounts);
  chartBarPercent('conG',byGRate,'Target Achievement');
- chartBar('conTop',Object.fromEntries(ranked.slice(0,10).map(r=>[r._name,r._rate])));
- chartBar('conBottom',Object.fromEntries(bottom.slice(0,10).map(r=>[r._name,r._rate])));
+ chartBar('conTop',Object.fromEntries(ranked.slice(0,10).map(r=>[r._name,consolidatedDisplayScore(r)])));
+ chartBar('conBottom',Object.fromEntries(bottom.slice(0,10).map(r=>[r._name,consolidatedDisplayScore(r)])));
 }
 
 function renderVaults(){
