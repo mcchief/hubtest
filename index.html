@@ -82,90 +82,135 @@ function cachedPayloadValid(raw){
  if(!raw||typeof raw!=='object')return false;
  return REQUIRED_DATASETS.every(k=>Array.isArray(raw[k]));
 }
-async function fetchCachedPayload(){
- let lastError='';
- for(let attempt=1;attempt<=4;attempt++){
-  try{
-   const ctrl=new AbortController();
-   const timer=setTimeout(()=>ctrl.abort(),12000);
-   const DATA_URL='https://raw.githubusercontent.com/mcchief/hubtest/main/data.json';
-   const res=await fetch(DATA_URL+'?v='+Date.now(),{
-    cache:'no-store',
-    signal:ctrl.signal
-   });
-   clearTimeout(timer);
-   if(!res.ok)throw new Error('HTTP '+res.status);
-   const raw=await res.json();
-   if(!cachedPayloadValid(raw))throw new Error('Data package validation failed');
-   return raw;
-  }catch(e){
-   lastError=e?.message||'Request failed';
-   if(attempt<4){
-    setStrictLoading('Live data synchronization is taking longer than expected. Retrying automatically…',false);
-    await sleep([1200,2500,4500][attempt-1]||4500);
-   }
+
+/* Production live-data strategy:
+ 1. Use same-origin ./data.json.
+ 2. Never retry in a blocking loop.
+ 3. Keep the last valid dataset in browser cache.
+ 4. Check quietly every 60 seconds and update the open module automatically.
+*/
+const DATA_URL='./data.json';
+const DATA_CACHE_NAME='woa-intelligence-v1';
+const DATA_CACHE_KEY='./__woa_last_valid_data__.json';
+const DATA_LOCAL_KEY='woa_last_valid_data_v1';
+
+async function fetchLatestPayload(timeoutMs=10000){
+ const ctrl=new AbortController();
+ const timer=setTimeout(()=>ctrl.abort(),timeoutMs);
+ try{
+  const res=await fetch(DATA_URL+'?v='+Date.now(),{cache:'no-store',signal:ctrl.signal,headers:{'Accept':'application/json'}});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  const raw=await res.json();
+  if(!cachedPayloadValid(raw))throw new Error('Data package validation failed');
+  return raw;
+ }finally{clearTimeout(timer)}
+}
+
+async function saveLastValidPayload(raw){
+ if(!cachedPayloadValid(raw))return;
+ const serialized=JSON.stringify(raw);
+ try{
+  if('caches' in window){
+   const cache=await caches.open(DATA_CACHE_NAME);
+   await cache.put(new Request(DATA_CACHE_KEY),new Response(serialized,{headers:{'Content-Type':'application/json'}}));
   }
- }
- throw new Error(lastError||'Unable to load data package');
+ }catch(e){console.warn('Cache Storage save skipped',e)}
+ try{localStorage.setItem(DATA_LOCAL_KEY,serialized)}catch(e){console.warn('Local fallback save skipped',e)}
+}
+
+async function loadLastValidPayload(){
+ try{
+  if('caches' in window){
+   const cache=await caches.open(DATA_CACHE_NAME);
+   const res=await cache.match(new Request(DATA_CACHE_KEY));
+   if(res){const raw=await res.json();if(cachedPayloadValid(raw))return raw}
+  }
+ }catch(e){console.warn('Cache Storage read skipped',e)}
+ try{
+  const stored=localStorage.getItem(DATA_LOCAL_KEY);
+  if(stored){const raw=JSON.parse(stored);if(cachedPayloadValid(raw))return raw}
+ }catch(e){console.warn('Local fallback read skipped',e)}
+ return null;
 }
 
 let AUTO_DATA_CHECK_TIMER=null;
 let LAST_DATA_SIGNATURE='';
 function payloadSignature(raw){
- try{return JSON.stringify(REQUIRED_DATASETS.map(k=>[k,Array.isArray(raw[k])?raw[k].length:-1,raw[k]?.[raw[k].length-1]||null]));}
- catch(e){return String(Date.now())}
+ try{
+  const s=JSON.stringify(raw);let h=2166136261;
+  for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}
+  return (h>>>0).toString(16)+':'+s.length;
+ }catch(e){return String(Date.now())}
 }
+
 async function checkForFreshData(){
  try{
-  const raw=await fetchCachedPayload();
+  const raw=await fetchLatestPayload(10000);
+  await saveLastValidPayload(raw);
   const sig=payloadSignature(raw);
-  if(!LAST_DATA_SIGNATURE){
-   LAST_DATA_SIGNATURE=sig;
-   return;
+  if(!LAST_DATA_SIGNATURE){LAST_DATA_SIGNATURE=sig;return}
+  if(sig===LAST_DATA_SIGNATURE)return;
+
+  console.info('New WoA intelligence data detected; applying it immediately.');
+  const currentModule=state.module,currentSelected=state.selected,currentG=state.g,currentPlayer=state.player,currentProfileTab=state.profileTab;
+  const modalOpen=document.getElementById('modal')?.classList.contains('show');
+
+  applyRawPayload(raw);LAST_DATA_SIGNATURE=sig;
+  state.module=currentModule;state.selected=currentSelected;state.g=currentG;state.player=currentPlayer;state.profileTab=currentProfileTab;
+  setupControls();document.getElementById('gFilter').value=state.g||'';renderAll();
+
+  if(modalOpen&&state.player){
+   renderProfile();state.profileTab=currentProfileTab;
+   document.querySelectorAll('#profileTabs .tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.profileTab===currentProfileTab));
+   renderProfileContent();document.getElementById('modal')?.classList.add('show');
   }
-  if(sig!==LAST_DATA_SIGNATURE){
-   console.info('New WoA intelligence data detected; applying it immediately.');
-   const currentModule=state.module;
-   const currentSelected=state.selected;
-   const currentG=state.g;
-   const currentPlayer=state.player;
-   const currentProfileTab=state.profileTab;
-   const modalOpen=document.getElementById('modal')?.classList.contains('show');
+  const msg=document.getElementById('searchMsg');if(msg)msg.textContent='New live data synchronized automatically.';
+ }catch(e){console.warn('Background data check skipped; current verified data remains active.',e)}
+}
+function startAutomaticDataChecks(){if(AUTO_DATA_CHECK_TIMER)clearInterval(AUTO_DATA_CHECK_TIMER);AUTO_DATA_CHECK_TIMER=setInterval(checkForFreshData,60*1000)}
 
-   applyRawPayload(raw);
-   LAST_DATA_SIGNATURE=sig;
+function applyRawPayload(raw){
+ state.data={
+  members:(raw.members||[]).map(mapMember).filter(r=>r._name),
+  eventSetup:(raw.eventSetup||[]).map(mapEventSetup).filter(r=>r._id||r._name),
+  growthRaw:(raw.growth||[]).map(mapGrowth).filter(r=>r._name&&r._week&&r._might>0),
+  tinman:(raw.tinman||[]).map(mapEventRow).filter(r=>r._name),
+  darkOmens:(raw.darkOmens||[]).map(mapEventRow).filter(r=>r._name),
+  trials:(raw.trials||[]).map(mapEventRow).filter(r=>r._name),
+  ragnarok:(raw.ragnarok||[]).map(mapEventRow).filter(r=>r._name),
+  chestpoints:(raw.chestpoints||[]).map(mapEventRow).filter(r=>r._name),
+  vaults:(raw.vaults||[]).map(mapEventRow).filter(r=>r._name),
+  eventExemptions:(raw.eventExemptions||[]).map(mapEventExemption).filter(r=>(r._id||r._name)&&r._reason)
+ };
+}
 
-   // Preserve the user's current location and filters while applying fresh data.
-   state.module=currentModule;
-   state.selected=currentSelected;
-   state.g=currentG;
-   state.player=currentPlayer;
-   state.profileTab=currentProfileTab;
+async function initLive(isBackgroundRefresh=false){
+ const app=document.getElementById('app'),searchMsg=document.getElementById('searchMsg'),retryBtn=document.getElementById('strictRetryBtn');
+ if(retryBtn)retryBtn.onclick=()=>initLive();
+ setStrictLoading('Synchronizing live intelligence…',false);
+ searchMsg.textContent='Synchronizing the latest WoA intelligence…';
 
-   setupControls();
-   document.getElementById('gFilter').value=state.g||'';
-   renderAll();
+ let raw=null,source='live';
+ try{raw=await fetchLatestPayload(10000);await saveLastValidPayload(raw)}
+ catch(liveError){console.warn('Initial live request delayed; using last verified browser dataset if available.',liveError);source='cached';raw=await loadLastValidPayload()}
 
-   if(modalOpen&&state.player){
-    renderProfile();
-    state.profileTab=currentProfileTab;
-    document.querySelectorAll('#profileTabs .tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.profileTab===currentProfileTab));
-    renderProfileContent();
-    document.getElementById('modal')?.classList.add('show');
-   }
+ try{
+  if(!cachedPayloadValid(raw))throw new Error('No verified intelligence dataset is currently available');
+  LAST_DATA_SIGNATURE=payloadSignature(raw);applyRawPayload(raw);
+  const requiredMapped=['members','eventSetup','growthRaw','tinman','darkOmens','trials','ragnarok','chestpoints','vaults'];
+  const missing=requiredMapped.filter(k=>!Array.isArray(state.data[k])||state.data[k].length===0);
+  if(missing.length)throw new Error('Mapped data package is incomplete');
 
-   const msg=document.getElementById('searchMsg');
-   if(msg)msg.textContent='New live data synchronized automatically.';
-  }
+  setupControls();renderAll();enableAutomaticLayout();updateHealthWarnings();
+  searchMsg.textContent=source==='live'?'WoA intelligence is live and fully synchronized.':'WoA intelligence loaded from the last verified snapshot. Live synchronization will continue automatically.';
+  unlockStrictDashboard();startAutomaticDataChecks();
+  if(source==='cached')setTimeout(checkForFreshData,3000);
  }catch(e){
-  console.warn('Automatic WoA data freshness check failed',e);
+  console.error('WoA startup error',e);
+  console.error('WoA startup diagnostics',{message:e?.message||String(e),dataKeys:Object.keys(state.data||{}),mappedCounts:Object.fromEntries(Object.entries(state.data||{}).map(([k,v])=>[k,Array.isArray(v)?v.length:null]))});
+  blockStrictDashboard();
  }
 }
-function startAutomaticDataChecks(){
- if(AUTO_DATA_CHECK_TIMER)clearInterval(AUTO_DATA_CHECK_TIMER);
- AUTO_DATA_CHECK_TIMER=setInterval(checkForFreshData,60*1000);
-}
-
 function mapMember(r){return{_id:field(r,['Player ID','ID']),_name:field(r,['Official Player Name','Player Name','Name','Player']),_g:field(r,['Current G-Level','G-Level','G Level']),_vault:num(field(r,['Current Vault Level','Vault Level'])),_hero:num(field(r,['Current Hero Level','Hero Level','Hero'])),_might:num(field(r,['Current Might','Might'])),_status:field(r,['Current Status','Status'])||'Active',_join:field(r,['Join Date','Date Joined']),_left:field(r,['Date Left','Left Date'])}}
 function mapEventRow(r){return{_eventId:field(r,['Event ID','EventID']),_event:field(r,['Event Date','Date','Week']),_available:num(field(r,['Available Members','Eligible Members'])),_rank:num(field(r,['Rank'])),_name:field(r,['Player Name','Official Player Name','Name','Player']),_id:field(r,['Player ID','ID']),_g:field(r,['G-Level','G Level','Current G-Level']),_vault:num(field(r,['Vault Level','Current Vault Level'])),_might:num(field(r,['Current Might','Might'])),_target:num(field(r,['Target','Required','Minimum'])),_score:num(field(r,['Result / Score','Score','Points','Essence','Result','Value'])),_status:field(r,['Result Status','Status','Current Status']),_buildTime:field(r,['Local Build Time','Build Time']),_resetOffset:field(r,['Reset Offset']),_utcOffset:field(r,['UTC Offset']),_chests:num(field(r,['Chests','Chest Count']))}}
 function mapEventSetup(r){return{_id:field(r,['Event ID','EventID']),_name:field(r,['Event Name','Name']),_type:field(r,['Event Type','Type']),_date:field(r,['Event Date','Date']),_target:num(field(r,['Target','Default Target'])),_available:num(field(r,['Available Members','Eligible Members']))}}
