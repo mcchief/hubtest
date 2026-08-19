@@ -410,7 +410,7 @@ const EXEC_COPY={
  ragnarok:'Current Ragnarök participation, score performance and player rankings.',
  chestpoints:'Current Chest Points contribution, participation and target performance.',
  vaults:'Current Vault building participation, completion and compliance intelligence.',
- exemptions:'Current leadership view of active, scheduled and historical event exemptions.',
+ exemptions:'Current leadership view of event exemptions. Active and scheduled views include Active members only; historical views retain prior records for audit.',
  nonBuilders:'Active eligible players who have not built a Vault for this event. Rotation and Inactive members are excluded.',
  mostVaults:'Players with the highest number of recorded Vault builds.',
  repeatVaultRisk:'Players who missed two or more eligible vault events while they were clan members. Join dates, departure dates and exemptions are enforced.',
@@ -578,6 +578,8 @@ const CONSOLIDATED_EVENTS=[
 
 function currentExemptionsForMember(member){
  const today=todayDate();
+ const currentMember=memberById(member?._id)||memberByName(member?._name)||member;
+ if(currentMember&&!isActiveCurrentStatus(currentMember._status))return [];
  return (state.data.eventExemptions||[]).filter(x=>{
   if(!exemptionActive(x))return false;
   const pid=key(member?._id), pname=key(member?._name);
@@ -989,12 +991,41 @@ function renderVaults(){
 
 function exemptionScopeLabel(x){return clean(x._eventId)?(clean(x._eventName)||clean(x._eventId)):'All Events'}
 function exemptionRowsForSelection(){
- let rows=(state.data.eventExemptions||[]).filter(x=>exemptionActive(x)&&(x._id||x._name)&&x._reason).map(x=>{const eventDate=eventDateForExemption(x);return {...x,_scope:clean(x._eventId)?'One Event':'All Events',_displayEvent:exemptionScopeLabel(x),_lifeStatus:exemptionLifecycleStatus(x),_eventDate:eventDate?isoDate(eventDate):''}});
+ let rows=(state.data.eventExemptions||[])
+  .filter(x=>exemptionActive(x)&&(x._id||x._name)&&x._reason)
+  .map(x=>{
+   const eventDate=eventDateForExemption(x);
+   const member=memberById(x._id)||memberByName(x._name)||null;
+   return {
+    ...x,
+    _scope:clean(x._eventId)?'One Event':'All Events',
+    _displayEvent:exemptionScopeLabel(x),
+    _lifeStatus:exemptionLifecycleStatus(x),
+    _eventDate:eventDate?isoDate(eventDate):'',
+    _memberStatus:clean(member?._status),
+    _memberActive:member?isActiveCurrentStatus(member._status):true
+   };
+  });
+
  const sel=clean(state.selected)||'status:active';
- if(sel==='status:active')rows=rows.filter(r=>r._lifeStatus==='Active');
- else if(sel==='status:scheduled')rows=rows.filter(r=>r._lifeStatus==='Scheduled');
- else if(sel==='status:expired')rows=rows.filter(r=>r._lifeStatus==='Expired');
- else if(sel.startsWith('range:')){const [,s,e]=sel.split(':');const start=startOfDay(parseAnyDate(s)),end=e==='open'?todayDate():startOfDay(parseAnyDate(e));if(start&&end)rows=rows.filter(r=>periodOverlaps(r,start,end))}
+
+ // Current and scheduled exemption views are operational views:
+ // only currently Active members belong here.
+ if(sel==='status:active'){
+  rows=rows.filter(r=>r._lifeStatus==='Active'&&r._memberActive);
+ }else if(sel==='status:scheduled'){
+  rows=rows.filter(r=>r._lifeStatus==='Scheduled'&&r._memberActive);
+ }else if(sel==='status:expired'){
+  // Historical audit remains available, including former/inactive members.
+  rows=rows.filter(r=>r._lifeStatus==='Expired');
+ }else if(sel==='status:all'){
+  // Full audit history intentionally retains all historical exemption records.
+ }else if(sel.startsWith('range:')){
+  const [,s,e]=sel.split(':');
+  const start=startOfDay(parseAnyDate(s)),end=e==='open'?todayDate():startOfDay(parseAnyDate(e));
+  if(start&&end)rows=rows.filter(r=>periodOverlaps(r,start,end));
+ }
+
  return rows;
 }
 function renderExemptions(){
