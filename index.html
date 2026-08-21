@@ -465,18 +465,32 @@ function renderEventModule(k,title,scoreLabel){
  eligible=eligibleCountAfterEffectiveExempt(eventId,baseAvailable,eligibleMembers,activeRows,k,eventDate),
  resultRows=activeRows.filter(r=>!rowIsExempt(eventId,r,eventDate)||rowHasParticipation(k,r)),
  accountableRows=activeRows.filter(r=>!rowIsExempt(eventId,r,eventDate)),
+ accountableParticipantRows=participantRows.filter(r=>!rowIsExempt(eventId,r,eventDate)),
  participants=participantRows.length,
+ accountableParticipants=accountableParticipantRows.length,
  total=participantRows.reduce((s,r)=>s+r._score,0),
+ isMandatoryNoTarget=(k==='ragnarok'),
  met=accountableRows.filter(r=>r._target>0&&r._score>=r._target).length,
  below=accountableRows.filter(r=>r._target>0&&r._score<r._target).length,
  underperformers=accountableRows.filter(r=>r._target>0&&r._score<r._target)
-   .sort((a,b)=>(a._score/a._target)-(b._score/b._target)||(b._target-b._score)-(a._target-a._score)||a._score-b._score);
+   .sort((a,b)=>(a._score/a._target)-(b._score/b._target)||(b._target-b._score)-(a._target-a._score)||a._score-b._score),
+ nonParticipants=eligibleMembers
+   .filter(m=>!isPlayerExempt(eventId,m,eventDate))
+   .filter(m=>!accountableParticipantRows.some(r=>samePlayer(m,r)))
+   .map(m=>({_name:m._name,_g:m._g||memberG(m._name),_score:0}))
+   .sort((a,b)=>String(a._name).localeCompare(String(b._name)));
 
  const resultsTable=tableCard(
    'Player Results',
    [...resultRows].sort((a,b)=>b._score-a._score||num(a._rank)-num(b._rank)),
-   ['Rank','Player','G-Level','Target',scoreLabel,'Difference','Status'],
-   r=>[
+   isMandatoryNoTarget?['Rank','Player','G-Level',scoreLabel,'Status']:['Rank','Player','G-Level','Target',scoreLabel,'Difference','Status'],
+   r=>isMandatoryNoTarget?[
+     r._rank||'',
+     playerWithExemptTag(r._name,rowIsExempt(eventId,r,eventDate)),
+     esc(r._g||memberG(r._name)),
+     fmt(r._score),
+     statusBadge(rowHasParticipation(k,r)?'Participated':'Did Not Participate')
+   ]:[
      r._rank||'',
      playerWithExemptTag(r._name,rowIsExempt(eventId,r,eventDate)),
      esc(r._g||memberG(r._name)),
@@ -485,13 +499,15 @@ function renderEventModule(k,title,scoreLabel){
      fmt(r._score-r._target),
      statusBadge(r._status||((r._score>=r._target)?'Met Target':'Below Target'))
    ],
-   `${resultRows.length}  visible records. Exempt non-participants are excluded from accountability views. Exempt participants remain visible with a blue Exempt tag and are not penalised.`
+   isMandatoryNoTarget
+    ?`${resultRows.length} visible participation records. Ragnarök is mandatory with no minimum score target. Valid exemptions remove accountability; exempt participants remain visible and are not penalised.`
+    :`${resultRows.length} visible records. Exempt non-participants are excluded from accountability views. Exempt participants remain visible with a blue Exempt tag and are not penalised.`
  );
 
  $('app').innerHTML=`
  <section class="content-head glass">
    <h2>${title}</h2>
-   <p class="sub">${EXEC_COPY[k]||'Current performance intelligence for this event.'}</p>
+   <p class="sub">${isMandatoryNoTarget?'Ragnarök is mandatory. There is no minimum score target; accountability is based on participation, with valid exemptions fully protected.':(EXEC_COPY[k]||'Current performance intelligence for this event.')}</p>
  </section>
 
  <section class="kpis">${kpiHtml([
@@ -500,31 +516,40 @@ function renderEventModule(k,title,scoreLabel){
    ['Exempt Participants',exemptButParticipated.length],
    ['Eligible Members',eligible],
    ['Participants',participants],
-   ['Participation %',pct(participants,eligible)],
+   ['Participation %',pct(accountableParticipants,eligible)],
    ['Total '+scoreLabel,short(total)],
-   ['Underperformers',below]
+   [isMandatoryNoTarget?'Non-Participants':'Underperformers',isMandatoryNoTarget?nonParticipants.length:below]
  ])}</section>
 
  <section class="chart-grid">
    <div class="glass"><div class="panel-head"><h3>Top 10 ${scoreLabel}</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div>
    <div class="glass"><div class="panel-head"><h3>G-Level Performance</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div>
-   <div class="glass"><div class="panel-head"><h3>Target Achievement</h3></div><div class="panel-body"><div class="chartbox" id="c3"></div></div></div>
+   <div class="glass"><div class="panel-head"><h3>${isMandatoryNoTarget?'Participation Status':'Target Achievement'}</h3></div><div class="panel-body"><div class="chartbox" id="c3"></div></div></div>
    <div class="glass"><div class="panel-head"><h3>Participation Trend</h3></div><div class="panel-body"><div class="chartbox" id="c4"></div></div></div>
  </section>
 
  ${resultsTable}
 
  <section class="intel-grid">
-   ${listCard('Underperformers',underperformers,'Underperformers',EXEC_COPY.underperformers)}
+   ${isMandatoryNoTarget
+      ?listCard('Non-Participants',nonParticipants,'Mandatory Participation','Active, eligible, non-exempt players with no Ragnarök participation recorded for the current event.')
+      :listCard('Underperformers',underperformers,'Underperformers',EXEC_COPY.underperformers)}
    ${listCard('Top Performers',[...participantRows].sort((a,b)=>b._score-a._score).slice(0,10),'Top',EXEC_COPY.topPerformers)}
-   ${listCard('Repeat Underperformers',repeatUnder(k,eventId).slice(0,10),'Repeat Risk',EXEC_COPY.repeatRisk)}
+   ${isMandatoryNoTarget
+      ?listCard('Repeat Non-Participants',repeatNonParticipants(k,eventId).slice(0,10),'Repeat Risk','Players who missed participation in two or more eligible Ragnarök events. Valid exemptions and membership dates are fully applied.')
+      :listCard('Repeat Underperformers',repeatUnder(k,eventId).slice(0,10),'Repeat Risk',EXEC_COPY.repeatRisk)}
  </section>`;
 
  chartBar('c1',topObj(participantRows,'_name','_score',10));
  chartBar('c2',groupSum(participantRows,'_g','_score'));
- chartPie('c3',{'Met Target':met,'Below Target':below});
+ if(isMandatoryNoTarget){
+   chartPie('c3',{'Participated':accountableParticipants,'Non-Participants':nonParticipants.length});
+ }else{
+   chartPie('c3',{'Met Target':met,'Below Target':below});
+ }
  chartLine('c4',eventTrend((state.data[k]||[]).filter(r=>rowHasParticipation(k,r))))
 }
+
 function repeatUnder(k,eventId=''){
  const map={};
  const selectedEventDate=parseAnyDate(eventMeta(eventId)._date)||null;
@@ -553,6 +578,43 @@ function repeatUnder(k,eventId=''){
   }
  });
  return Object.values(map).sort((a,b)=>b._score-a._score||String(a._name).localeCompare(String(b._name)))
+}
+
+function repeatNonParticipants(k,eventId=''){
+ const selectedEventDate=parseAnyDate(eventMeta(eventId)._date)||null;
+ const groups=new Map();
+
+ (state.data[k]||[]).forEach(r=>{
+  const gid=clean(r._eventId)||clean(r._event)||'Unknown Event';
+  if(!groups.has(gid))groups.set(gid,[]);
+  groups.get(gid).push(r);
+ });
+
+ const misses=new Map();
+
+ groups.forEach((groupRows,gid)=>{
+  const groupDate=parseAnyDate(eventMeta(gid)._date)||parseAnyDate(groupRows.find(r=>r._event)?._event)||null;
+  const groupEligible=eligibleMembersForDate(groupDate);
+
+  groupEligible.forEach(member=>{
+   if(!memberIsActiveForDate(member._name,groupDate))return;
+   if(selectedEventDate&&!memberIsActiveForDate(member._name,selectedEventDate))return;
+   if(state.g && (member._g||memberG(member._name))!==state.g)return;
+   if(isPlayerExempt(gid,member,groupDate))return;
+
+   const participated=groupRows.some(r=>samePlayer(r,member)&&rowHasParticipation(k,r));
+   if(participated)return;
+
+   const kk=key(member._id||member._name);
+   if(!kk)return;
+   if(!misses.has(kk))misses.set(kk,{_name:member._name,_g:member._g||memberG(member._name),_score:0});
+   misses.get(kk)._score++;
+  });
+ });
+
+ return [...misses.values()]
+  .filter(r=>r._score>=2)
+  .sort((a,b)=>b._score-a._score||String(a._name).localeCompare(String(b._name)));
 }
 
 function parseAnyDate(v){v=clean(v);if(!v)return null;let d=new Date(v);if(!isNaN(d))return d;let m=v.match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=v.match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);return null}
