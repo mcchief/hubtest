@@ -670,7 +670,7 @@ function modulePeriodBounds(k=state.module){
 }
 function rowInModulePeriod(x,k=state.module){const p=modulePeriodBounds(k);if(p.mode==='all')return true;if(p.mode==='current'){const id=clean(x?._eventId)||clean(x?._event)||clean(x?._week);return !!id&&id===moduleLatestEventId(k)}const d=eventRowDate(x);if(!d)return false;if(p.start&&d<p.start)return false;if(p.end&&d>p.end)return false;return true}
 function selectedRows(rows){let r=filteredRows(rows);if(state.selected)r=r.filter(x=>x._eventId===state.selected||x._event===state.selected||x._week===state.selected);else if(['tinman','darkOmens','trials','ragnarok','chestpoints','vaults'].includes(state.module))r=r.filter(x=>rowInModulePeriod(x,state.module));return r}
-function modulePeriodControls(k=state.module){const p=modulePeriodBounds(k),disabled=!!state.selected;return `<section class="glass"><div class="panel-head"><div><h3>Analysis Period</h3><p class="sub">${disabled?'A specific Event / Week is selected. Choose All in Event / Week to use period analysis.':(p.mode==='all'?'All Events analyses CURRENT ACTIVE MEMBERS ONLY across their applicable recorded history. Former members/leavers are excluded.':p.mode==='current'?'Current uses the latest recorded event / snapshot and the current Active roster.':'Historical periods use membership as it stood on each event date, so members who later left may appear.')}</p></div><span class="chip">${esc(disabled?'Specific Event':p.label)}</span></div><div class="panel-body"><div class="period-calendar-grid"><div><label>Period</label><select class="select" id="modulePeriod" ${disabled?'disabled':''}><option value="current">${k==='growth'?'Current Week':'Current'}</option><option value="7d">Last 7 Days</option><option value="15d">Last 15 Days</option><option value="30d">Last 30 Days</option><option value="60d">Last 60 Days</option><option value="90d">Last 90 Days</option><option value="all">${k==='growth'?'All Weeks':'All Events'}</option></select></div></div></div></section>`}
+function modulePeriodControls(k=state.module){const p=modulePeriodBounds(k),disabled=!!state.selected;return `<section class="glass"><div class="panel-head"><div><h3>Analysis Period</h3><p class="sub">${disabled?'A specific Event / Week is selected. Choose All in Event / Week to use period analysis.':(p.mode==='all'?'All Events analyses CURRENT ACTIVE MEMBERS ONLY across their applicable recorded history. Former members/leavers are excluded.':p.mode==='current'?'Current uses the latest recorded event / snapshot and the current Active roster.':'Historical periods use membership as it stood on each event date, so members who later left may appear.')}</p></div><span class="chip">${esc(disabled?'Specific Event':p.label)}</span></div><div class="panel-body"><div class="period-calendar-grid"><div><label>Period</label><select class="select" id="modulePeriod" ${disabled?'disabled':''}><option value="all">${k==='growth'?'All Weeks':'All Events'}</option><option value="current">${k==='growth'?'Current Week':'Current'}</option><option value="7d">Last 7 Days</option><option value="15d">Last 15 Days</option><option value="30d">Last 30 Days</option><option value="60d">Last 60 Days</option><option value="90d">Last 90 Days</option></select></div></div></div></section>`}
 function bindModulePeriodControls(k=state.module){const el=$('modulePeriod');if(!el)return;el.value=modulePeriodMode(k);el.onchange=e=>{state.eventPeriods[k]=e.target.value;state.selected='';renderAll()};const f=$('moduleFrom'),t=$('moduleTo');if(f)f.onchange=e=>{state.eventPeriodFrom[k]=e.target.value;renderAll()};if(t)t.onchange=e=>{state.eventPeriodTo[k]=e.target.value;renderAll()};const open=x=>{if(!x)return;try{if(typeof x.showPicker==='function')x.showPicker();else x.focus()}catch(_){x.focus()}};const fb=$('moduleFromPick'),tb=$('moduleToPick');if(fb)fb.onclick=()=>open(f);if(tb)tb.onclick=()=>open(t)}
 function eventMeta(id){return state.data.eventSetup.find(e=>e._id===id)||{}}
 function startOfDay(d){if(!(d instanceof Date)||isNaN(d))return null;return new Date(d.getFullYear(),d.getMonth(),d.getDate())}
@@ -975,6 +975,9 @@ function renderEventPeriodModule(k,title,scoreLabel){
    : players.filter(p=>p._expected>0&&p._score<p._expected).sort((a,b)=>(a._score/a._expected)-(b._score/b._expected)||a._name.localeCompare(b._name));
  // Repeat risk remains event-by-event: below target / non-participation in 2+ eligible events.
  const repeat=players.filter(p=>p._missed>=2).sort((a,b)=>b._missed-a._missed||a._name.localeCompare(b._name));
+ const fullParticipation=isMandatoryNoTarget?players.filter(p=>p._eligible>0&&p._participated===p._eligible):[];
+ const partialParticipation=isMandatoryNoTarget?players.filter(p=>p._eligible>0&&p._participated>0&&p._participated<p._eligible):[];
+ const noParticipation=isMandatoryNoTarget?players.filter(p=>p._eligible>0&&p._participated===0):[];
  const top=[...participatedPlayers].sort((a,b)=>b._score-a._score||a._name.localeCompare(b._name)).slice(0,10);
  const currentActive=filteredRows((state.data.members||[]).filter(m=>String(m._status||'Active').toLowerCase()==='active')).length || new Set(rows.map(r=>key(r._name))).size;
  const successDen=met+below, periodLabel=modulePeriodBounds(k).label;
@@ -983,7 +986,7 @@ function renderEventPeriodModule(k,title,scoreLabel){
  const aggHeaders=isMandatoryNoTarget?['Player','G-Level','Eligible Events','Participated','Total '+scoreLabel,'Average '+scoreLabel,'Missed Events','Miss Rate','Participation %']:['Player','G-Level','Eligible Events','Participated','Total '+scoreLabel,'Target','Average '+scoreLabel,'Targets Met','Targets Missed','Success %'];
  const aggTable=tableCard('Player Results',[...players].sort((a,b)=>b._score-a._score||a._name.localeCompare(b._name)),aggHeaders,r=>isMandatoryNoTarget?[pLink(r._name),gBadge(r._g),r._eligible,r._participated,fmt(r._score),fmt(Math.round(r._avg)),r._missed,(r._eligible?Math.round(r._missed/r._eligible*1000)/10:0)+'%',(r._eligible?Math.round((r._participated/r._eligible)*1000)/10:0)+'%']:[pLink(r._name),gBadge(r._g),r._eligible,r._participated,fmt(r._score),fmt(r._expected),fmt(Math.round(r._avg)),r._met,r._missed,r._success+'%'],`${players.length} unique players aggregated across ${Object.keys(eventMap).length} event records in ${periodLabel}. Each player appears once.`);
 
- const simplePeriodCard=(title,arr,sub,mode)=>card(title,sub,arr.length?`<ul class="list">${arr.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g)}</span>${mode==='repeat'?`<span>${r._missed}</span>`:(mode==='top'||mode==='simple')?`<span>${fmt(r._score)}</span>`:''}</li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,mode==='top'?'Top':'Period');
+ const simplePeriodCard=(title,arr,sub,mode)=>card(title,sub,arr.length?`<ul class="list">${arr.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g)}</span>${mode==='participation'?`<span>${(r._eligible?((r._participated/r._eligible)*100):0).toFixed(1)}%</span>`:mode==='misspct'?`<span>${(r._eligible?((r._missed/r._eligible)*100):0).toFixed(1)}%</span>`:mode==='repeat'?`<span>${r._missed}</span>`:(mode==='top'||mode==='simple')?`<span>${fmt(r._score)}</span>`:''}</li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,mode==='top'?'Top':(mode==='participation'?'Participation %':mode==='misspct'?'Miss %':'Period'));
 
  $('app').innerHTML=`
  <section class="content-head glass"><h2>${title}</h2><p class="sub">${periodLabel} performance intelligence. ${modulePeriodMode(k)==='all'?'All Events includes CURRENT ACTIVE MEMBERS ONLY; former members/leavers are excluded. ':''}Multiple event records are aggregated so each player appears once in player tables.</p></section>
@@ -992,9 +995,10 @@ function renderEventPeriodModule(k,title,scoreLabel){
  <section class="chart-grid"><div class="glass"><div class="panel-head"><h3>Top 10 ${scoreLabel}</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div><div class="glass"><div class="panel-head"><h3>G-Level Performance</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div><div class="glass"><div class="panel-head"><h3>${isMandatoryNoTarget?'Participation Status':'Historical Event Results'}</h3></div><div class="panel-body"><div class="chartbox" id="c3"></div></div></div><div class="glass"><div class="panel-head"><h3>Participation Trend</h3></div><div class="panel-body"><div class="chartbox" id="c4"></div></div></div></section>
  ${aggTable}
  <section class="intel-grid">
-   ${simplePeriodCard(isMandatoryNoTarget?'Non-Participants':'Period Underperformers',under,isMandatoryNoTarget?'Players who did not participate in at least one expected Ragnarök event.':'Players whose total achieved points are below their total expected points for the selected period.','simple')}
-   ${simplePeriodCard('Top Performers',top,'Top unique players by total points in the selected period.','top')}
-   ${simplePeriodCard(isMandatoryNoTarget?'Repeat Non-Participants':'Repeat Underperformers',repeat,isMandatoryNoTarget?'Players who did not participate in two or more expected Ragnarök events.':'Players who finished below their applicable event target in two or more eligible events.','repeat')}
+   ${isMandatoryNoTarget?simplePeriodCard('Full Participation',fullParticipation,'Players who participated in every eligible Ragnarök event in the selected period.','participation'):simplePeriodCard('Period Underperformers',under,'Players whose total achieved points are below their total expected points for the selected period.','simple')}
+   ${isMandatoryNoTarget?simplePeriodCard('Partial Participation',partialParticipation,'Players who participated in some, but not all, eligible Ragnarök events in the selected period.','participation'):simplePeriodCard('Top Performers',top,'Top unique players by total points in the selected period.','top')}
+   ${isMandatoryNoTarget?simplePeriodCard('No Participation',noParticipation,'Players who participated in none of their eligible Ragnarök events in the selected period.','participation'):simplePeriodCard('Repeat Underperformers',repeat,'Players who finished below their applicable event target in two or more eligible events.','repeat')}
+   ${isMandatoryNoTarget?simplePeriodCard('Repeat Misses',repeat,'Players who missed two or more eligible Ragnarök events in the selected period.','misspct'):''}
  </section>`;
  chartBar('c1',Object.fromEntries(top.map(r=>[r._name,r._score])));
  chartBar('c2',Object.fromEntries(Object.entries(gStats).map(([g,v])=>[g,v.eligible?Math.round(v.met/v.eligible*1000)/10:0])));
@@ -1607,7 +1611,9 @@ function renderVaults(){
   const missing=rows.filter(r=>r._missing>0)
    .sort((a,b)=>b._missing-a._missing||a._rate-b._rate||String(a._name).localeCompare(String(b._name)));
   const repeat=missing.filter(r=>r._missing>=2);
-  const compliant=rows.filter(r=>r._expected>0&&r._missing===0);
+  const compliant=rows.filter(r=>r._expected>0&&r._built===r._expected);
+  const partial=rows.filter(r=>r._expected>0&&r._built>0&&r._built<r._expected);
+  const noBuilds=rows.filter(r=>r._expected>0&&r._built===0);
   const period=modulePeriodBounds('vaults');
 
   $('app').innerHTML=`<section class="content-head glass"><h2>Vaults</h2><p class="sub">Vault building compliance for ${esc(period.label)}. ${period.mode==='all'?'All Events includes CURRENT ACTIVE MEMBERS ONLY; former members/leavers are excluded. ':''}Each eligible Vault event is assessed as Built or Missing. Vault Levels are never added across events.</p></section>${modulePeriodControls('vaults')}
@@ -1627,17 +1633,18 @@ function renderVaults(){
    </section>
    ${tableCard('Vault Results',rows,
     ['Player','G-Level','Expected Builds','Built','Missing','Compliance','Status'],
-    r=>[pLink(r._name),gBadge(r._g),fmt(r._expected),fmt(r._built),fmt(r._missing),r._rate.toFixed(1)+'%',statusBadge(r._missing===0?'Built All':'Missing')],
+    r=>[pLink(r._name),gBadge(r._g),fmt(r._expected),fmt(r._built),fmt(r._missing),r._rate.toFixed(1)+'%',statusBadge(r._built===r._expected?'Fully Compliant':r._built===0?'No Builds':'Partial Compliance')],
     `Each player appears once. Expected Builds counts only eligible, non-exempt Vault events in ${esc(period.label)}. Vault Level is not summed across events.`
    )}
    <section class="vault-menu">
-    ${card('Non-Vault Builders','Players who missed at least one required Vault build in the selected period.',missing.length?`<ul class="list">${missing.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'Missing Builds')}
-    ${listCard('Repeat Non-Vault Builders',repeat.map(r=>({...r,_score:r._missing})),'Repeat Risk','Players who missed two or more required Vault builds. The number shown is the number of eligible Vault events missed.')}
-    ${card('Fully Compliant','Players who built every Vault they were eligible and required to build in the selected period.',compliant.length?`<ul class="list">${compliant.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'100% Compliance')}
+    ${card('Fully Compliant','Players who built every Vault they were eligible and required to build in the selected period.',compliant.length?`<ul class="list">${compliant.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')}</span><span>${r._rate.toFixed(1)}%</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'Compliance %')}
+    ${card('Partial Compliance','Players who completed some, but not all, required Vault builds in the selected period.',partial.length?`<ul class="list">${partial.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')}</span><span>${r._rate.toFixed(1)}%</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'Compliance %')}
+    ${card('No Builds','Players who completed none of their required Vault builds in the selected period.',noBuilds.length?`<ul class="list">${noBuilds.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')}</span><span>${r._rate.toFixed(1)}%</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'Compliance %')}
+    ${card('Repeat Misses','Players who missed two or more required Vault builds in the selected period.',repeat.length?`<ul class="list">${repeat.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')}</span><span>${(r._expected?((r._missing/r._expected)*100):0).toFixed(1)}%</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'Miss %')}
    </section>`;
 
   chartBarPercent('c1',Object.fromEntries(rows.slice(0,10).map(r=>[r._name,r._rate])),'Compliance');
-  chartPie('c2',{'Completed Builds':completedBuilds,'Missing Builds':Math.max(0,expectedBuilds-completedBuilds)});
+  chartPie('c2',{'Fully Compliant':compliant.length,'Partial Compliance':partial.length,'No Builds':noBuilds.length});
   bindModulePeriodControls('vaults');
   return;
  }
