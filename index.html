@@ -1527,6 +1527,101 @@ function renderVaults(){
  const addKeys=(set,o)=>vaultKeys(o).forEach(k=>set.add(k));
  const uniqueKey=o=>normVaultKey(o?._id)||normVaultKey(o?._name)||key(o?._id)||key(o?._name);
 
+ // PERIOD VAULT LOGIC:
+ // Vault Level is never added across events. For a period, evaluate each eligible
+ // player once per Vault event as Built or Missing, then aggregate compliance.
+ if(!state.selected){
+  const periodGroups=new Map();
+  (state.data.vaults||[]).filter(r=>rowInModulePeriod(r,'vaults')).forEach(r=>{
+   const gid=clean(r._eventId)||clean(r._event)||'Unknown Vault Event';
+   if(!periodGroups.has(gid))periodGroups.set(gid,[]);
+   periodGroups.get(gid).push(r);
+  });
+
+  const stats=new Map();
+  let exemptionInstances=0, expectedBuilds=0, completedBuilds=0;
+
+  periodGroups.forEach((groupRows,gid)=>{
+   const gm=eventMeta(gid);
+   const gd=parseAnyDate(gm._date)||parseAnyDate(groupRows.find(r=>r._event)?._event)||null;
+   const builtSet=new Set();
+
+   groupRows
+    .filter(r=>r._name&&memberIsActiveForDate(r._name,gd))
+    .filter(r=>rowHasParticipation('vaults',r))
+    .forEach(r=>addKeys(builtSet,r));
+
+   eligibleMembersForDate(gd).forEach(member=>{
+    if(!memberIsActiveForDate(member._name,gd))return;
+    const g=member._g||memberG(member._name);
+    if(state.g&&g!==state.g)return;
+
+    if(isPlayerExempt(gid,member,gd)){
+     exemptionInstances++;
+     return;
+    }
+
+    const mk=uniqueKey(member);
+    if(!mk)return;
+    if(!stats.has(mk))stats.set(mk,{
+     _name:member._name,_g:g,_expected:0,_built:0,_missing:0
+    });
+
+    const s=stats.get(mk);
+    s._expected++;
+    expectedBuilds++;
+    if(hasAnyKey(builtSet,member)){
+     s._built++;
+     completedBuilds++;
+    }else{
+     s._missing++;
+    }
+   });
+  });
+
+  const rows=[...stats.values()].map(r=>({
+   ...r,
+   _rate:r._expected?(r._built/r._expected)*100:0
+  })).sort((a,b)=>b._rate-a._rate||b._built-a._built||String(a._name).localeCompare(String(b._name)));
+
+  const missing=rows.filter(r=>r._missing>0)
+   .sort((a,b)=>b._missing-a._missing||a._rate-b._rate||String(a._name).localeCompare(String(b._name)));
+  const repeat=missing.filter(r=>r._missing>=2);
+  const compliant=rows.filter(r=>r._expected>0&&r._missing===0);
+  const period=modulePeriodBounds('vaults');
+
+  $('app').innerHTML=`<section class="content-head glass"><h2>Vaults</h2><p class="sub">Vault building compliance for ${esc(period.label)}. Each eligible Vault event is assessed as Built or Missing. Vault Levels are never added across events.</p></section>${modulePeriodControls('vaults')}
+   <section class="kpis">${kpiHtml([
+    ['Current Active Members',state.g?activeRosterMembers().filter(m=>(m._g||memberG(m._name))===state.g).length:activeRosterMembers().length],
+    ['Vault Events',periodGroups.size],
+    ['Exemption Instances',exemptionInstances],
+    ['Expected Builds',expectedBuilds],
+    ['Completed Builds',completedBuilds],
+    ['Missing Builds',Math.max(0,expectedBuilds-completedBuilds)],
+    ['Build Compliance %',pct(completedBuilds,expectedBuilds)],
+    ['Fully Compliant Players',compliant.length]
+   ])}</section>
+   <section class="chart-grid">
+    <div class="glass"><div class="panel-head"><h3>Vault Build Compliance</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div>
+    <div class="glass"><div class="panel-head"><h3>Vault Build Status</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div>
+   </section>
+   ${tableCard('Vault Results',rows,
+    ['Player','G-Level','Expected Builds','Built','Missing','Compliance','Status'],
+    r=>[pLink(r._name),gBadge(r._g),fmt(r._expected),fmt(r._built),fmt(r._missing),r._rate.toFixed(1)+'%',statusBadge(r._missing===0?'Built All':'Missing')],
+    `Each player appears once. Expected Builds counts only eligible, non-exempt Vault events in ${esc(period.label)}. Vault Level is not summed across events.`
+   )}
+   <section class="vault-menu">
+    ${card('Non-Vault Builders','Players who missed at least one required Vault build in the selected period.',missing.length?`<ul class="list">${missing.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'Missing Builds')}
+    ${listCard('Repeat Non-Vault Builders',repeat.map(r=>({...r,_score:r._missing})),'Repeat Risk','Players who missed two or more required Vault builds. The number shown is the number of eligible Vault events missed.')}
+    ${card('Fully Compliant','Players who built every Vault they were eligible and required to build in the selected period.',compliant.length?`<ul class="list">${compliant.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'100% Compliance')}
+   </section>`;
+
+  chartBarPercent('c1',Object.fromEntries(rows.slice(0,10).map(r=>[r._name,r._rate])),'Compliance');
+  chartPie('c2',{'Completed Builds':completedBuilds,'Missing Builds':Math.max(0,expectedBuilds-completedBuilds)});
+  bindModulePeriodControls('vaults');
+  return;
+ }
+
  const activeRows=sourceRows.filter(r=>r._name&&memberIsActiveForDate(r._name,eventDate));
  const buildRows=activeRows.filter(r=>rowHasParticipation('vaults',r));
  const builderMap={},builtKeys=new Set();
@@ -1570,13 +1665,10 @@ function renderVaults(){
  const levels=builders.map(r=>r._vault).filter(v=>v>0);
  const levelCounts=groupCount(builders,'_vault');
 
- // Vault period-card logic.
- // STRICT PERIOD RULE: first select Vault events whose event dates fall inside
- // the chosen 7/15/30/60/90-day window (or All Events), then calculate each
- // player's Expected / Registered / Missing using ONLY those events.
- // Valid event exemptions remove that event from Expected; membership dates
- // are applied per event; each player appears once. The same period statistics
- // drive Non-Vault Registrants, Repeat Non-Vault Registrants and Most Vaults Registered.
+ // Non-Vault Registrants card logic.
+ // For period views, calculate each player's Registered / Expected across every
+ // eligible Vault event in the selected period. Valid event exemptions remove
+ // that event from Expected. Each player appears once.
  let nonBuilderList=nonBuilderMembers.map(m=>({_name:m._name,_g:m._g,_score:0}));
  let periodVaultStats=null;
  if(!state.selected){
@@ -1618,13 +1710,7 @@ function renderVaults(){
   if(!vaultBuildMap[kk])vaultBuildMap[kk]={_name:r._name,_g:r._g||memberG(r._name),_score:0};
   vaultBuildMap[kk]._score++;
  });
- const mostVaultsBuilt=(!state.selected&&periodVaultStats
-  ? [...periodVaultStats.values()].map(r=>({_name:r._name,_g:r._g,_score:r._registered}))
-  : Object.values(vaultBuildMap))
-  .filter(r=>r._score>0)
-  .filter(r=>!state.g||r._g===state.g)
-  .sort((a,b)=>b._score-a._score||String(a._name).localeCompare(String(b._name)))
-  .slice(0,10);
+ const mostVaultsBuilt=Object.values(vaultBuildMap).sort((a,b)=>b._score-a._score||String(a._name).localeCompare(String(b._name))).slice(0,10);
 
  // Repeat Non-Vault Builders:
  // One miss per eligible player per Vault event.
@@ -1689,7 +1775,7 @@ function renderVaults(){
 
  $('app').innerHTML=`<section class="content-head glass"><h2>Vaults</h2><p class="sub">${EXEC_COPY.vaults}</p></section>${modulePeriodControls('vaults')}
 
- <section class="kpis">${kpiHtml([['Available Members',baseAvailable],['Valid Exemptions',effectiveExemptions.length],['Exempt Builders',exemptButParticipated.length],['Eligible Members',eligible],['Vaults Built',built],['Non-Vault Builders',nonBuilders],['Completion %',pct(built,eligible)],['Highest Vault Level',Math.max(0,...levels)]])}</section><section class="chart-grid"><div class="glass"><div class="panel-head"><h3>Vault Level Distribution</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div><div class="glass"><div class="panel-head"><h3>Vault Build Trend</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div></section>${tableCard('Vault Results',resultRows.sort((a,b)=>num(b._vault)-num(a._vault)||String(a._name).localeCompare(String(b._name))),['Rank','Player','G-Level','Vault Level','Status'],r=>[r._rank||'',playerWithExemptTag(r._name,rowIsExempt(eventId,r,eventDate)),gBadge(r._g||memberG(r._name)),fmt(r._vault),statusBadge(r._vaultStatus)],'Active, eligible, non-exempt missing builders remain visible. Exempt non-builders are excluded, while exempt builders remain visible with a blue Exempt tag and are not penalised.')}<section class="vault-menu">${card('Non-Vault Registrants','Players with at least one eligible Vault registration missing in the selected period.',nonBuilderList.length?`<ul class="list">${nonBuilderList.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||memberG(r._name)||'')}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'Missing Registrations')}${listCard('Repeat Non-Vault Registrants',repeatNonVaultBuilders,'Repeat Risk','Players with two or more missing eligible Vault registrations. Valid exemptions and membership dates are applied.')}${listCard('Most Vaults Registered',mostVaultsBuilt,'Registered',!state.selected?'Players with the most completed Vault registrations in the selected period.':EXEC_COPY.mostVaults)}</section>`;
+ <section class="kpis">${kpiHtml([['Available Members',baseAvailable],['Valid Exemptions',effectiveExemptions.length],['Exempt Builders',exemptButParticipated.length],['Eligible Members',eligible],['Vaults Built',built],['Non-Vault Builders',nonBuilders],['Completion %',pct(built,eligible)],['Highest Vault Level',Math.max(0,...levels)]])}</section><section class="chart-grid"><div class="glass"><div class="panel-head"><h3>Vault Level Distribution</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div><div class="glass"><div class="panel-head"><h3>Vault Build Trend</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div></section>${tableCard('Vault Results',resultRows.sort((a,b)=>num(b._vault)-num(a._vault)||String(a._name).localeCompare(String(b._name))),['Rank','Player','G-Level','Vault Level','Status'],r=>[r._rank||'',playerWithExemptTag(r._name,rowIsExempt(eventId,r,eventDate)),gBadge(r._g||memberG(r._name)),fmt(r._vault),statusBadge(r._vaultStatus)],'Active, eligible, non-exempt missing builders remain visible. Exempt non-builders are excluded, while exempt builders remain visible with a blue Exempt tag and are not penalised.')}<section class="vault-menu">${card('Non-Vault Registrants','Players with at least one eligible Vault registration missing in the selected period.',nonBuilderList.length?`<ul class="list">${nonBuilderList.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||memberG(r._name)||'')}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'Missing Registrations')}${listCard('Repeat Non-Vault Registrants',repeatNonVaultBuilders,'Repeat Risk','Players with two or more missing eligible Vault registrations. Valid exemptions and membership dates are applied.')}${listCard('Most Vaults Built',mostVaultsBuilt,'Vaults Built',EXEC_COPY.mostVaults)}</section>`;
 
  chartPie('c1',levelCounts);
  chartLine('c2',eventTrend((state.data.vaults||[]).filter(r=>rowHasParticipation('vaults',r))))
