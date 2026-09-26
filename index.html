@@ -889,7 +889,59 @@ function renderGrowth(){const weeks=growthWeeks(),latest=state.selected||(weeks.
  const g=num(clean(r._g).replace(/[^0-9]/g,''));
  return (g>0&&g<=6)||r._might<=200000000;
 }).sort((a,b)=>a._might-b._might||String(a._name).localeCompare(String(b._name))),positive=active.filter(r=>num(r._change)>0),slowGrowers=active.filter(r=>Number.isFinite(r._growthPct)).sort((a,b)=>a._growthPct-b._growthPct).slice(0,10),net=newMembers.length+returned.length-left.length;$('app').innerHTML=`<section class="content-head glass"><h2>Growth</h2><p class="sub">Growth Raw Data is the source for clan might, membership movement and player progression. New and Returned players are separated from comparable week-on-week growth.</p></section><section class="kpis">${kpiHtml([['Growth Snapshot',latest||'-','Current Growth date'],['Current Members',analysis.length,'Players recorded for this Growth date'],['Clan Might',short(clanMight),'Total clan might for this Growth date'],['Comparable Growth',short(comparableGrowth),'Players present in consecutive Growth records'],['Average Growth',short(avgGrowth),active.length+' comparable Active players'],['New Members',newMembers.length,'First recorded Growth appearance'],['Members Left',left.length,'Present in the previous Growth record but absent from the current one'],['Below 200M',analysis.filter(r=>r._might<200000000).length,'Players at or below 200M Might']])}</section><section class="chart-grid"><div class="glass"><div class="panel-head"><h3>Clan Might Trend</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div><div class="glass"><div class="panel-head"><h3>Membership Movement</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div><div class="glass"><div class="panel-head"><h3>Top 10 Weekly Growth</h3></div><div class="panel-body"><div class="chartbox" id="c3"></div></div></div><div class="glass"><div class="panel-head"><h3>Top 10 Growers — All Time</h3></div><div class="panel-body"><div class="chartbox" id="c4"></div></div></div></section><section class="growth-intel-grid">${growthListCard('Development Focus',development.slice(0,10),'Development Focus',r=>short(r._might),'All G6 and below, plus every player at or below 200M Might regardless of G-Level.')}${growthListCard('Returned Players',returned,'Returned',r=>r._growthLabel,'Growth since the previous recorded appearance. Returned players are excluded from comparable week-on-week ranking.')}${growthListCard('New Members',newMembers,'New',r=>short(r._might),'First recorded appearance in Growth Raw Data.')}${growthListCard('Members Left',left,'Left',r=>short(r._might),'Present in the previous Growth record but absent from the current record.')}</section><section class="intel-grid">${listCard('Highest Improvers',[...positive].sort((a,b)=>b._change-a._change).slice(0,10),'Improvers','Comparable growth between consecutive Growth records only.')}${growthListCard('Slow Growers',slowGrowers,'Growth %',r=>r._growthPct.toFixed(2)+'%','Bottom 10 comparable Active players by week-on-week growth percentage.')}${lifecycleSummaryCard([{_name:'Active',_value:active.length},{_name:'New',_value:newMembers.length},{_name:'Returned',_value:returned.length},{_name:'Left',_value:left.length}])}</section>${tableCard('Player Growth Analysis',analysis.sort((a,b)=>b._might-a._might),['Rank','Player','G-Level','Lifecycle','Current Might','Growth','Last Seen','Total Growth'],(r,i)=>[i+1,pLink(r._name),gBadge(r._g),statusBadge(r._lifecycle),fmt(r._might),esc(r._growthLabel),esc(r._lastSeen),fmt(r._total)],'Returned players show growth since their previous recorded appearance. New players remain visible but are excluded from comparable week-on-week growth.')}${growthGLevelRoster(analysis)}`;chartLine('c1',growthTrend());chartBar('c2',growthMovementForWeek(latest));chartBar('c3',topObj(positive,'_name','_change',10));chartBar('c4',topObj(allTimeGrowthRows(),'_name','_growth',10))}
+function periodEventGroups(k){
+ const groups=new Map();
+ filteredRows(state.data[k]||[]).filter(r=>r._name&&rowInModulePeriod(r,k)).forEach(r=>{
+  const gid=clean(r._eventId)||clean(r._event)||'Unknown Event';
+  if(!groups.has(gid))groups.set(gid,[]);
+  groups.get(gid).push(r);
+ });
+ return groups;
+}
+function renderEventPeriodAnalytics(k,title,scoreLabel){
+ const groups=periodEventGroups(k), mandatory=(k==='ragnarok'), players=new Map();
+ let eventCount=0,totalScore=0,totalEligible=0,totalParticipations=0,totalSuccess=0,totalFailures=0,totalExempt=0;
+ const trend={};
+ groups.forEach((rows,gid)=>{
+  const eventDate=parseAnyDate(eventMeta(gid)._date)||parseAnyDate(rows.find(r=>r._event)?._event)||null;
+  if(!eventDate)return;
+  eventCount++;
+  const roster=filteredRows(eligibleMembersForDate(eventDate).map(m=>({...m,_g:m._g||memberG(m._name)})));
+  let eventEligible=0,eventParticipated=0;
+  roster.forEach(m=>{
+   const row=bestPlayerRow(rows,m,k), exempt=isPlayerExempt(gid,m,eventDate), participated=!!row&&rowHasParticipation(k,row);
+   const pk=uniqueKey(m)||key(m._name); if(!pk)return;
+   if(!players.has(pk))players.set(pk,{_name:m._name,_g:m._g||memberG(m._name),_score:0,_eligible:0,_participated:0,_met:0,_missed:0,_exempt:0});
+   const rec=players.get(pk);
+   if(exempt){rec._exempt++;totalExempt++;if(participated){rec._score+=num(row._score);totalScore+=num(row._score)}return;}
+   rec._eligible++;totalEligible++;eventEligible++;
+   if(participated){rec._participated++;totalParticipations++;eventParticipated++;rec._score+=num(row._score);totalScore+=num(row._score)}
+   if(mandatory){if(!participated){rec._missed++;totalFailures++}else totalSuccess++;}
+   else{
+    const target=num(row?._target)||num(eventMeta(gid)._target);
+    if(target>0&&participated&&num(row._score)>=target){rec._met++;totalSuccess++;}
+    else if(target>0){rec._missed++;totalFailures++;}
+   }
+  });
+  const label=isoDate(eventDate)||clean(gid); trend[label]=eventEligible?eventParticipated/eventEligible*100:0;
+ });
+ const rows=[...players.values()].map(r=>({...r,_participationRate:r._eligible?r._participated/r._eligible*100:0,_successRate:r._eligible?(mandatory?r._participated:r._met)/r._eligible*100:0}));
+ const assessed=rows.filter(r=>r._eligible>0).length, participationRate=totalEligible?totalParticipations/totalEligible*100:0, successRate=totalEligible?totalSuccess/totalEligible*100:0;
+ const top=[...rows].filter(r=>r._participated>0).sort((a,b)=>b._score-a._score||String(a._name).localeCompare(String(b._name))).slice(0,10);
+ const under=[...rows].filter(r=>r._missed>0).sort((a,b)=>b._missed-a._missed||a._successRate-b._successRate||String(a._name).localeCompare(String(b._name)));
+ const resultRows=[...rows].filter(r=>r._eligible>0||r._exempt>0).sort((a,b)=>b._successRate-a._successRate||b._score-a._score||String(a._name).localeCompare(String(b._name)));
+ const period=modulePeriodBounds(k);
+ $('app').innerHTML=`<section class="content-head glass"><h2>${title}</h2><p class="sub">Historical performance intelligence aggregated by player for ${esc(period.label)}. Each player appears once; event records are used only to calculate participation and accountability.</p></section>${modulePeriodControls(k)}
+ <section class="kpis">${kpiHtml([['Players Assessed',assessed],['Events',eventCount],['Eligible Player-Events',totalEligible],['Participation Rate',participationRate.toFixed(1)+'%'],['Total '+scoreLabel,short(totalScore)],[mandatory?'Participation Success':'Target Success Rate',successRate.toFixed(1)+'%'],[mandatory?'Players Missing Participation':'Players Below Target',under.length],['Exempt Player-Events',totalExempt]])}</section>
+ <section class="chart-grid"><div class="glass"><div class="panel-head"><h3>Top 10 ${scoreLabel}</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div><div class="glass"><div class="panel-head"><h3>G-Level Performance</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div><div class="glass"><div class="panel-head"><h3>${mandatory?'Participation Achievement':'Target Achievement'}</h3></div><div class="panel-body"><div class="chartbox" id="c3"></div></div></div><div class="glass"><div class="panel-head"><h3>Participation Trend</h3></div><div class="panel-body"><div class="chartbox" id="c4"></div></div></div></section>
+ ${tableCard('Player Results',resultRows,['Rank','Player','G-Level','Events Participated','Eligible Events',mandatory?'Participation %':'Targets Met',mandatory?'Missed Events':'Targets Missed',scoreLabel,mandatory?'Participation Rate':'Target Success Rate'],(r,i)=>[i+1,pLink(r._name),gBadge(r._g),fmt(r._participated),fmt(r._eligible),mandatory?r._participationRate.toFixed(1)+'%':fmt(r._met),fmt(r._missed),fmt(r._score),r._successRate.toFixed(1)+'%'],'One row per player for the selected period. Valid exemptions are excluded from accountability calculations.')}
+ <section class="intel-grid">${listCard(mandatory?'Repeat Non-Participants':'Repeat Underperformers',under.slice(0,10),mandatory?'Missed Events':'Targets Missed',mandatory?'Players who missed eligible participation during the selected period.':'Players below target in one or more eligible events during the selected period.')}${listCard('Top Performers',top,'Total '+scoreLabel,'Highest aggregate '+scoreLabel+' during the selected period.')}</section>`;
+ chartBar('c1',Object.fromEntries(top.map(r=>[r._name,r._score])));
+ const g={};rows.filter(r=>r._eligible>0).forEach(r=>{g[r._g]=g[r._g]||{s:0,e:0};g[r._g].s+=mandatory?r._participated:r._met;g[r._g].e+=r._eligible});chartBarPercent('c2',Object.fromEntries(Object.entries(g).map(([x,v])=>[x,v.e?v.s/v.e*100:0])),mandatory?'Participation':'Target Achievement');
+ chartPie('c3',mandatory?{'Participated':totalSuccess,'Missed':totalFailures}:{'Met Target':totalSuccess,'Below Target':totalFailures});chartLine('c4',trend);bindModulePeriodControls(k);
+}
 function renderEventModule(k,title,scoreLabel){
+ if(!state.selected){renderEventPeriodAnalytics(k,title,scoreLabel);return;}
  const sourceRows=selectedRows(state.data[k]||[]).filter(r=>r._name),
  eventId=state.selected||(sourceRows[0]?._eventId||''),
  meta=eventId?eventMeta(eventId):{},
@@ -995,6 +1047,7 @@ function repeatUnder(k,eventId=''){
  const map={};
  const selectedEventDate=parseAnyDate(eventMeta(eventId)._date)||null;
  (state.data[k]||[]).forEach(r=>{
+  if(!state.selected&&!rowInModulePeriod(r,k))return;
   if(!clean(r._name)||r._target<=0)return;
   const rowEventId=clean(r._eventId)||clean(eventId);
   const rowEventDate=parseAnyDate(eventMeta(rowEventId)._date)||parseAnyDate(r._event);
