@@ -651,22 +651,26 @@ function isActiveCurrentStatus(v){return normalizedMemberStatus(v)==='active'}
 function isRotationOrInactiveStatus(v){return /^(rotation|inactive|pending)$/.test(normalizedMemberStatus(v))}
 function activeMembers(){return state.data.members.filter(m=>isActiveCurrentStatus(m._status))} function memberByName(n){const k=key(n);return state.data.members.find(m=>key(m._name)===k)||state.data.members.find(m=>key(m._name).includes(k))} function memberById(id){const k=key(id);return k?state.data.members.find(m=>key(m._id)===k):null} function memberG(n){return memberByName(n)?._g||''} function filteredRows(rows){return state.g?rows.filter(r=>(r._g||memberG(r._name))===state.g):rows} function eventRowDate(x){const id=clean(x?._eventId);return startOfDay(parseAnyDate(id?eventMeta(id)._date:null)||parseAnyDate(x?._event)||parseAnyDate(x?._week))}
 function modulePeriodMode(k=state.module){return (state.eventPeriods&&state.eventPeriods[k])||'all'}
+function moduleDataRows(k){return (state.data&&state.data[k])||[]}
+function moduleLatestEventId(k){
+ const groups=new Map();
+ moduleDataRows(k).forEach(r=>{const id=clean(r._eventId)||clean(r._event)||clean(r._week);if(!id)return;const d=eventRowDate(r);const t=d?d.getTime():0;const old=groups.get(id);if(!old||t>old.t)groups.set(id,{id,t})});
+ return [...groups.values()].sort((a,b)=>b.t-a.t||String(b.id).localeCompare(String(a.id)))[0]?.id||'';
+}
 function modulePeriodBounds(k=state.module){
- const mode=modulePeriodMode(k); if(mode==='all')return {mode,start:null,end:null,label:'All Events'};
+ const mode=modulePeriodMode(k); if(mode==='all')return {mode,start:null,end:null,label:k==='growth'?'All Weeks':'All Events'};
+ if(mode==='current')return {mode,start:null,end:null,label:k==='growth'?'Current Week':'Current'};
  const today=todayDate(); let start=null,end=today,label='';
  if(mode==='7d'){start=new Date(today);start.setDate(start.getDate()-6);label='Last 7 Days'}
-  else if(mode==='15d'){start=new Date(today);start.setDate(start.getDate()-14);label='Last 15 Days'}
+ else if(mode==='15d'){start=new Date(today);start.setDate(start.getDate()-14);label='Last 15 Days'}
  else if(mode==='30d'){start=new Date(today);start.setDate(start.getDate()-29);label='Last 30 Days'}
  else if(mode==='60d'){start=new Date(today);start.setDate(start.getDate()-59);label='Last 60 Days'}
  else if(mode==='90d'){start=new Date(today);start.setDate(start.getDate()-89);label='Last 90 Days'}
- else if(mode==='month'){start=new Date(today.getFullYear(),today.getMonth(),1);label='This Month'}
- else if(mode==='prevmonth'){start=new Date(today.getFullYear(),today.getMonth()-1,1);end=new Date(today.getFullYear(),today.getMonth(),0);label='Previous Month'}
- else if(mode==='custom'){start=startOfDay(parseAnyDate(state.eventPeriodFrom?.[k]));end=startOfDay(parseAnyDate(state.eventPeriodTo?.[k]));if(start&&end&&start>end){const t=start;start=end;end=t}label=(start||end)?`${start?isoDate(start):'Start'} → ${end?isoDate(end):'Today'}`:'Custom Range'}
  return {mode,start,end,label};
 }
-function rowInModulePeriod(x,k=state.module){const p=modulePeriodBounds(k);if(p.mode==='all')return true;const d=eventRowDate(x);if(!d)return false;if(p.start&&d<p.start)return false;if(p.end&&d>p.end)return false;return true}
+function rowInModulePeriod(x,k=state.module){const p=modulePeriodBounds(k);if(p.mode==='all')return true;if(p.mode==='current'){const id=clean(x?._eventId)||clean(x?._event)||clean(x?._week);return !!id&&id===moduleLatestEventId(k)}const d=eventRowDate(x);if(!d)return false;if(p.start&&d<p.start)return false;if(p.end&&d>p.end)return false;return true}
 function selectedRows(rows){let r=filteredRows(rows);if(state.selected)r=r.filter(x=>x._eventId===state.selected||x._event===state.selected||x._week===state.selected);else if(['tinman','darkOmens','trials','ragnarok','chestpoints','vaults'].includes(state.module))r=r.filter(x=>rowInModulePeriod(x,state.module));return r}
-function modulePeriodControls(k=state.module){const p=modulePeriodBounds(k),custom=modulePeriodMode(k)==='custom',disabled=!!state.selected;return `<section class=\"glass\"><div class=\"panel-head\"><div><h3>Performance Period</h3><p class=\"sub\">${disabled?'A specific Event / Week is selected. Choose All to analyse a period.':'Recalculate this event module using only records inside the selected period.'}</p></div><span class=\"chip\">${esc(disabled?'Specific Event':p.label)}</span></div><div class=\"panel-body\"><div class=\"period-calendar-grid\"><div><label>Period</label><select class=\"select\" id=\"modulePeriod\" ${disabled?'disabled':''}><option value=\"7d\">Last 7 Days</option><option value=\"15d\">Last 15 Days</option><option value=\"30d\">Last 30 Days</option><option value=\"60d\">Last 60 Days</option><option value=\"90d\">Last 90 Days</option><option value=\"all\">All Events</option></select></div><div style=\"${custom&&!disabled?'':'display:none'}\"><label>From Date</label><div class=\"calendar-field\"><input class=\"input\" type=\"date\" id=\"moduleFrom\" value=\"${escAttr(state.eventPeriodFrom?.[k]||'')}\"><button class=\"calendar-pick\" id=\"moduleFromPick\" type=\"button\">📅</button></div></div><div style=\"${custom&&!disabled?'':'display:none'}\"><label>To Date</label><div class=\"calendar-field\"><input class=\"input\" type=\"date\" id=\"moduleTo\" value=\"${escAttr(state.eventPeriodTo?.[k]||'')}\"><button class=\"calendar-pick\" id=\"moduleToPick\" type=\"button\">📅</button></div></div></div></div></section>`}
+function modulePeriodControls(k=state.module){const p=modulePeriodBounds(k),disabled=!!state.selected;return `<section class="glass"><div class="panel-head"><div><h3>Analysis Period</h3><p class="sub">${disabled?'A specific Event / Week is selected. Choose All in Event / Week to use period analysis.':(p.mode==='all'?'All Events analyses CURRENT ACTIVE MEMBERS ONLY across their applicable recorded history. Former members/leavers are excluded.':p.mode==='current'?'Current uses the latest recorded event / snapshot and the current Active roster.':'Historical periods use membership as it stood on each event date, so members who later left may appear.')}</p></div><span class="chip">${esc(disabled?'Specific Event':p.label)}</span></div><div class="panel-body"><div class="period-calendar-grid"><div><label>Period</label><select class="select" id="modulePeriod" ${disabled?'disabled':''}><option value="current">${k==='growth'?'Current Week':'Current'}</option><option value="7d">Last 7 Days</option><option value="15d">Last 15 Days</option><option value="30d">Last 30 Days</option><option value="60d">Last 60 Days</option><option value="90d">Last 90 Days</option><option value="all">${k==='growth'?'All Weeks':'All Events'}</option></select></div></div></div></section>`}
 function bindModulePeriodControls(k=state.module){const el=$('modulePeriod');if(!el)return;el.value=modulePeriodMode(k);el.onchange=e=>{state.eventPeriods[k]=e.target.value;state.selected='';renderAll()};const f=$('moduleFrom'),t=$('moduleTo');if(f)f.onchange=e=>{state.eventPeriodFrom[k]=e.target.value;renderAll()};if(t)t.onchange=e=>{state.eventPeriodTo[k]=e.target.value;renderAll()};const open=x=>{if(!x)return;try{if(typeof x.showPicker==='function')x.showPicker();else x.focus()}catch(_){x.focus()}};const fb=$('moduleFromPick'),tb=$('moduleToPick');if(fb)fb.onclick=()=>open(f);if(tb)tb.onclick=()=>open(t)}
 function eventMeta(id){return state.data.eventSetup.find(e=>e._id===id)||{}}
 function startOfDay(d){if(!(d instanceof Date)||isNaN(d))return null;return new Date(d.getFullYear(),d.getMonth(),d.getDate())}
@@ -885,6 +889,18 @@ function growthGLevelRoster(analysis){
  )).join('');
  return cards?`<section class="content-head glass"><h2>Players by G-Level</h2><p class="sub">G-Level classification uses the current Growth Raw Data record, with the Global Members Masterfile used only when the Growth value is blank.</p></section><section class="g-roster-grid dynamic-source" data-pack-columns="3">${cards}</section>`:'';
 }
+function renderGrowthSelected(){const weeks=growthWeeks(),latest=state.selected||(weeks.length?weeks[weeks.length-1]:'');const life=growthLifecycleSnapshot(latest);let analysis=filteredRows(life.current);const active=analysis.filter(r=>r._lifecycle==='Active'),newMembers=analysis.filter(r=>r._lifecycle==='New'),returned=analysis.filter(r=>r._lifecycle==='Returned'),left=state.g?life.left.filter(r=>r._g===state.g):life.left,clanMight=analysis.reduce((s,r)=>s+r._might,0),comparableGrowth=active.reduce((s,r)=>s+num(r._change),0),avgGrowth=active.length?comparableGrowth/active.length:0,development=active.filter(r=>{
+ const g=num(clean(r._g).replace(/[^0-9]/g,''));
+ return (g>0&&g<=6)||r._might<=200000000;
+}).sort((a,b)=>a._might-b._might||String(a._name).localeCompare(String(b._name))),positive=active.filter(r=>num(r._change)>0),slowGrowers=active.filter(r=>Number.isFinite(r._growthPct)).sort((a,b)=>a._growthPct-b._growthPct).slice(0,10),net=newMembers.length+returned.length-left.length;$('app').innerHTML=`<section class="content-head glass"><h2>Growth</h2><p class="sub">Growth Raw Data is the source for clan might, membership movement and player progression. New and Returned players are separated from comparable week-on-week growth.</p></section><section class="kpis">${kpiHtml([['Growth Snapshot',latest||'-','Current Growth date'],['Current Members',analysis.length,'Players recorded for this Growth date'],['Clan Might',short(clanMight),'Total clan might for this Growth date'],['Comparable Growth',short(comparableGrowth),'Players present in consecutive Growth records'],['Average Growth',short(avgGrowth),active.length+' comparable Active players'],['New Members',newMembers.length,'First recorded Growth appearance'],['Members Left',left.length,'Present in the previous Growth record but absent from the current one'],['Below 200M',analysis.filter(r=>r._might<200000000).length,'Players at or below 200M Might']])}</section><section class="chart-grid"><div class="glass"><div class="panel-head"><h3>Clan Might Trend</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div><div class="glass"><div class="panel-head"><h3>Membership Movement</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div><div class="glass"><div class="panel-head"><h3>Top 10 Weekly Growth</h3></div><div class="panel-body"><div class="chartbox" id="c3"></div></div></div><div class="glass"><div class="panel-head"><h3>Top 10 Growers — All Time</h3></div><div class="panel-body"><div class="chartbox" id="c4"></div></div></div></section><section class="growth-intel-grid">${growthListCard('Development Focus',development.slice(0,10),'Development Focus',r=>short(r._might),'All G6 and below, plus every player at or below 200M Might regardless of G-Level.')}${growthListCard('Returned Players',returned,'Returned',r=>r._growthLabel,'Growth since the previous recorded appearance. Returned players are excluded from comparable week-on-week ranking.')}${growthListCard('New Members',newMembers,'New',r=>short(r._might),'First recorded appearance in Growth Raw Data.')}${growthListCard('Members Left',left,'Left',r=>short(r._might),'Present in the previous Growth record but absent from the current record.')}</section><section class="intel-grid">${listCard('Highest Improvers',[...positive].sort((a,b)=>b._change-a._change).slice(0,10),'Improvers','Comparable growth between consecutive Growth records only.')}${growthListCard('Slow Growers',slowGrowers,'Growth %',r=>r._growthPct.toFixed(2)+'%','Bottom 10 comparable Active players by week-on-week growth percentage.')}${lifecycleSummaryCard([{_name:'Active',_value:active.length},{_name:'New',_value:newMembers.length},{_name:'Returned',_value:returned.length},{_name:'Left',_value:left.length}])}</section>${tableCard('Player Growth Analysis',analysis.sort((a,b)=>b._might-a._might),['Rank','Player','G-Level','Lifecycle','Current Might','Growth','Last Seen','Total Growth'],(r,i)=>[i+1,pLink(r._name),gBadge(r._g),statusBadge(r._lifecycle),fmt(r._might),esc(r._growthLabel),esc(r._lastSeen),fmt(r._total)],'Returned players show growth since their previous recorded appearance. New players remain visible but are excluded from comparable week-on-week growth.')}${growthGLevelRoster(analysis)}`;chartLine('c1',growthTrend());chartBar('c2',growthMovementForWeek(latest));chartBar('c3',topObj(positive,'_name','_change',10));chartBar('c4',topObj(allTimeGrowthRows(),'_name','_growth',10))}
+function growthWeekDate(w){return startOfDay(parseAnyDate(w))}
+function growthWeeksInAnalysisPeriod(){
+ const mode=modulePeriodMode('growth'), weeks=growthWeeks();
+ if(mode==='all')return weeks;
+ if(mode==='current')return weeks.length?[weeks[weeks.length-1]]:[];
+ const p=modulePeriodBounds('growth');
+ return weeks.filter(w=>{const d=growthWeekDate(w);return d&&(!p.start||d>=p.start)&&(!p.end||d<=p.end)});
+}
 function renderGrowth(){const weeks=growthWeeks(),latest=state.selected||(weeks.length?weeks[weeks.length-1]:'');const life=growthLifecycleSnapshot(latest);let analysis=filteredRows(life.current);const active=analysis.filter(r=>r._lifecycle==='Active'),newMembers=analysis.filter(r=>r._lifecycle==='New'),returned=analysis.filter(r=>r._lifecycle==='Returned'),left=state.g?life.left.filter(r=>r._g===state.g):life.left,clanMight=analysis.reduce((s,r)=>s+r._might,0),comparableGrowth=active.reduce((s,r)=>s+num(r._change),0),avgGrowth=active.length?comparableGrowth/active.length:0,development=active.filter(r=>{
  const g=num(clean(r._g).replace(/[^0-9]/g,''));
  return (g>0&&g<=6)||r._might<=200000000;
@@ -905,7 +921,9 @@ function renderEventPeriodModule(k,title,scoreLabel){
 
  Object.entries(eventMap).forEach(([eid,erows])=>{
    const edate=parseAnyDate(eventMeta(eid)._date)||parseAnyDate(erows.find(r=>r._event)?._event)||parseAnyDate(erows.find(r=>r._week)?._week)||null;
-   const eligibleMembersForEvent=filteredRows(eligibleMembersForDate(edate).map(m=>({...m,_g:m._g||memberG(m._name)})));
+   const periodMode=modulePeriodMode(k);
+   const rosterBase=(periodMode==='all'||periodMode==='current')?activeRosterMembers():eligibleMembersForDate(edate);
+   const eligibleMembersForEvent=filteredRows(rosterBase.filter(m=>memberIsActiveForDate(m._name,edate)).map(m=>({...m,_g:m._g||memberG(m._name)})));
    const rowByPlayer=new Map();
    erows.filter(r=>r._name&&memberIsActiveForDate(r._name,edate)).forEach(r=>{
      const kk=key(r._name); if(!kk)return;
@@ -925,11 +943,11 @@ function renderEventPeriodModule(k,title,scoreLabel){
      const r=rowByPlayer.get(kk);
      const participated=!!(r&&rowHasParticipation(k,r));
      const score=r?num(r._score):0;
-     const target=r?num(r._target):0;
+     const target=r?num(r._target):num((erows.find(x=>clean(x._g)===clean(m._g)&&num(x._target)>0)||{})._target);
      let p=playerMap[kk];
      if(!p)p=playerMap[kk]={_name:m._name,_g:(r?._g)||m._g||memberG(m._name),_eligible:0,_participated:0,_score:0,_expected:0,_met:0,_missed:0,_events:new Set()};
      p._events.add(eid); p._eligible++;
-     if(participated){p._participated++;eventParticipants++;}
+     if(participated){p._participated++;eventParticipants++;total+=score;}
      p._score+=score;
      if(isMandatoryNoTarget){
        if(!participated){p._missed++;below++;} else met++;
@@ -944,7 +962,6 @@ function renderEventPeriodModule(k,title,scoreLabel){
    });
    eligibleEntries += Math.max(0,eligibleMembersForEvent.length-exNames.size);
    participationEntries += eventParticipants;
-   total += erows.filter(r=>r._name&&memberIsActiveForDate(r._name,edate)&&!rowIsExempt(eid,r,edate)&&rowHasParticipation(k,r)).reduce((a,r)=>a+num(r._score),0);
    const label=clean(eventMeta(eid)._date)||clean(erows[0]?._event)||clean(erows[0]?._week)||eid;
    const eventEligible=Math.max(0,eligibleMembersForEvent.length-exNames.size);
    trend[label]=eventEligible?Math.round((eventParticipants/eventEligible)*1000)/10:0;
@@ -958,29 +975,26 @@ function renderEventPeriodModule(k,title,scoreLabel){
    : players.filter(p=>p._expected>0&&p._score<p._expected).sort((a,b)=>(a._score/a._expected)-(b._score/b._expected)||a._name.localeCompare(b._name));
  // Repeat risk remains event-by-event: below target / non-participation in 2+ eligible events.
  const repeat=players.filter(p=>p._missed>=2).sort((a,b)=>b._missed-a._missed||a._name.localeCompare(b._name));
- const fullParticipation=isMandatoryNoTarget?players.filter(p=>p._eligible>0&&p._participated===p._eligible).sort((a,b)=>b._participated-a._participated||a._name.localeCompare(b._name)):[];
- const partialParticipation=isMandatoryNoTarget?players.filter(p=>p._participated>0&&p._participated<p._eligible).sort((a,b)=>(b._participated/b._eligible)-(a._participated/a._eligible)||a._name.localeCompare(b._name)):[];
- const noParticipation=isMandatoryNoTarget?players.filter(p=>p._eligible>0&&p._participated===0).sort((a,b)=>b._eligible-a._eligible||a._name.localeCompare(b._name)):[];
  const top=[...participatedPlayers].sort((a,b)=>b._score-a._score||a._name.localeCompare(b._name)).slice(0,10);
  const currentActive=filteredRows((state.data.members||[]).filter(m=>String(m._status||'Active').toLowerCase()==='active')).length || new Set(rows.map(r=>key(r._name))).size;
  const successDen=met+below, periodLabel=modulePeriodBounds(k).label;
 
  // Player Results is intentionally preserved exactly as the existing period implementation.
- const aggTable=tableCard('Player Results',[...players].sort((a,b)=>b._score-a._score||a._name.localeCompare(b._name)),['Player','G-Level','Eligible Events','Participated','Total '+scoreLabel,'Average '+scoreLabel,isMandatoryNoTarget?'Missed Events':'Targets Met',isMandatoryNoTarget?'Miss Rate':'Targets Missed',isMandatoryNoTarget?'Participation %':'Success %'],r=>[pLink(r._name),gBadge(r._g),r._eligible,r._participated,fmt(r._score),fmt(Math.round(r._avg)),isMandatoryNoTarget?r._missed:r._met,isMandatoryNoTarget?((r._eligible?Math.round(r._missed/r._eligible*1000)/10:0)+'%'):r._missed,isMandatoryNoTarget?(r._eligible?Math.round((r._participated/r._eligible)*1000)/10:0)+'%':r._success+'%'],`${players.length} unique players aggregated across ${Object.keys(eventMap).length} Tinman/event records in ${periodLabel}. Each player appears once.`);
+ const aggHeaders=isMandatoryNoTarget?['Player','G-Level','Eligible Events','Participated','Total '+scoreLabel,'Average '+scoreLabel,'Missed Events','Miss Rate','Participation %']:['Player','G-Level','Eligible Events','Participated','Total '+scoreLabel,'Target','Average '+scoreLabel,'Targets Met','Targets Missed','Success %'];
+ const aggTable=tableCard('Player Results',[...players].sort((a,b)=>b._score-a._score||a._name.localeCompare(b._name)),aggHeaders,r=>isMandatoryNoTarget?[pLink(r._name),gBadge(r._g),r._eligible,r._participated,fmt(r._score),fmt(Math.round(r._avg)),r._missed,(r._eligible?Math.round(r._missed/r._eligible*1000)/10:0)+'%',(r._eligible?Math.round((r._participated/r._eligible)*1000)/10:0)+'%']:[pLink(r._name),gBadge(r._g),r._eligible,r._participated,fmt(r._score),fmt(r._expected),fmt(Math.round(r._avg)),r._met,r._missed,r._success+'%'],`${players.length} unique players aggregated across ${Object.keys(eventMap).length} event records in ${periodLabel}. Each player appears once.`);
 
- const simplePeriodCard=(title,arr,sub,mode)=>card(title,sub,arr.length?`<ul class="list">${arr.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g)}</span>${mode==='repeat'?`<span>${r._missed}</span>`:mode==='participation'?`<span>${r._participated}/${r._eligible} · ${r._eligible?Math.round(r._participated/r._eligible*1000)/10:0}%</span>`:(mode==='top'||mode==='simple')?`<span>${fmt(r._score)}</span>`:''}</li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,mode==='top'?'Top':'Period');
+ const simplePeriodCard=(title,arr,sub,mode)=>card(title,sub,arr.length?`<ul class="list">${arr.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g)}</span>${mode==='repeat'?`<span>${r._missed}</span>`:(mode==='top'||mode==='simple')?`<span>${fmt(r._score)}</span>`:''}</li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,mode==='top'?'Top':'Period');
 
  $('app').innerHTML=`
- <section class="content-head glass"><h2>${title}</h2><p class="sub">${periodLabel} performance intelligence. Multiple event records are aggregated so each player appears once in player tables.</p></section>
+ <section class="content-head glass"><h2>${title}</h2><p class="sub">${periodLabel} performance intelligence. ${modulePeriodMode(k)==='all'?'All Events includes CURRENT ACTIVE MEMBERS ONLY; former members/leavers are excluded. ':''}Multiple event records are aggregated so each player appears once in player tables.</p></section>
  ${modulePeriodControls(k)}
  <section class="kpis">${kpiHtml([['Current Active Members',currentActive],['Events in Period',Object.keys(eventMap).length],['Exemption Instances',exemptionInstances],['Eligible Entries',eligibleEntries],['Participation Entries',participationEntries],['Participation %',pct(participationEntries,eligibleEntries)],['Total '+scoreLabel,short(total)],[isMandatoryNoTarget?'Missed Entries':'Target Success %',isMandatoryNoTarget?below:pct(met,successDen)]])}</section>
  <section class="chart-grid"><div class="glass"><div class="panel-head"><h3>Top 10 ${scoreLabel}</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div><div class="glass"><div class="panel-head"><h3>G-Level Performance</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div><div class="glass"><div class="panel-head"><h3>${isMandatoryNoTarget?'Participation Status':'Historical Event Results'}</h3></div><div class="panel-body"><div class="chartbox" id="c3"></div></div></div><div class="glass"><div class="panel-head"><h3>Participation Trend</h3></div><div class="panel-body"><div class="chartbox" id="c4"></div></div></div></section>
  ${aggTable}
  <section class="intel-grid">
-   ${isMandatoryNoTarget?simplePeriodCard('Full Participation',fullParticipation,'Players who participated in every eligible, non-exempt Ragnarök event in the selected period.','participation'):simplePeriodCard('Period Underperformers',under,'Players whose total achieved points are below their total expected points for the selected period.','simple')}
-   ${isMandatoryNoTarget?simplePeriodCard('Partial Participation',partialParticipation,'Players who participated in at least one, but not all, eligible Ragnarök events in the selected period.','participation'):simplePeriodCard('Top Performers',top,'Top unique players by total points in the selected period.','top')}
-   ${isMandatoryNoTarget?simplePeriodCard('No Participation',noParticipation,'Players who did not participate in any eligible Ragnarök event in the selected period.','participation'):simplePeriodCard('Repeat Underperformers',repeat,'Players who finished below their applicable event target in two or more eligible events.','repeat')}
-   ${isMandatoryNoTarget?simplePeriodCard('Repeat Misses',repeat,'Players who missed participation in two or more eligible Ragnarök events.','repeat'):''}
+   ${simplePeriodCard(isMandatoryNoTarget?'Non-Participants':'Period Underperformers',under,isMandatoryNoTarget?'Players who did not participate in at least one expected Ragnarök event.':'Players whose total achieved points are below their total expected points for the selected period.','simple')}
+   ${simplePeriodCard('Top Performers',top,'Top unique players by total points in the selected period.','top')}
+   ${simplePeriodCard(isMandatoryNoTarget?'Repeat Non-Participants':'Repeat Underperformers',repeat,isMandatoryNoTarget?'Players who did not participate in two or more expected Ragnarök events.':'Players who finished below their applicable event target in two or more eligible events.','repeat')}
  </section>`;
  chartBar('c1',Object.fromEntries(top.map(r=>[r._name,r._score])));
  chartBar('c2',Object.fromEntries(Object.entries(gStats).map(([g,v])=>[g,v.eligible?Math.round(v.met/v.eligible*1000)/10:0])));
@@ -1555,7 +1569,9 @@ function renderVaults(){
     .filter(r=>rowHasParticipation('vaults',r))
     .forEach(r=>addKeys(builtSet,r));
 
-   eligibleMembersForDate(gd).forEach(member=>{
+   const vaultPeriodMode=modulePeriodMode('vaults');
+   const vaultRoster=(vaultPeriodMode==='all'||vaultPeriodMode==='current')?activeRosterMembers():eligibleMembersForDate(gd);
+   vaultRoster.forEach(member=>{
     if(!memberIsActiveForDate(member._name,gd))return;
     const g=member._g||memberG(member._name);
     if(state.g&&g!==state.g)return;
@@ -1588,17 +1604,13 @@ function renderVaults(){
    _rate:r._expected?(r._built/r._expected)*100:0
   })).sort((a,b)=>b._rate-a._rate||b._built-a._built||String(a._name).localeCompare(String(b._name)));
 
-  const partial=rows.filter(r=>r._expected>0&&r._built>0&&r._built<r._expected)
-   .sort((a,b)=>a._rate-b._rate||b._missing-a._missing||String(a._name).localeCompare(String(b._name)));
-  const noBuilds=rows.filter(r=>r._expected>0&&r._built===0)
-   .sort((a,b)=>b._missing-a._missing||String(a._name).localeCompare(String(b._name)));
   const missing=rows.filter(r=>r._missing>0)
    .sort((a,b)=>b._missing-a._missing||a._rate-b._rate||String(a._name).localeCompare(String(b._name)));
   const repeat=missing.filter(r=>r._missing>=2);
   const compliant=rows.filter(r=>r._expected>0&&r._missing===0);
   const period=modulePeriodBounds('vaults');
 
-  $('app').innerHTML=`<section class="content-head glass"><h2>Vaults</h2><p class="sub">Vault building compliance for ${esc(period.label)}. Each eligible Vault event is assessed as Built or Missing. Vault Levels are never added across events.</p></section>${modulePeriodControls('vaults')}
+  $('app').innerHTML=`<section class="content-head glass"><h2>Vaults</h2><p class="sub">Vault building compliance for ${esc(period.label)}. ${period.mode==='all'?'All Events includes CURRENT ACTIVE MEMBERS ONLY; former members/leavers are excluded. ':''}Each eligible Vault event is assessed as Built or Missing. Vault Levels are never added across events.</p></section>${modulePeriodControls('vaults')}
    <section class="kpis">${kpiHtml([
     ['Current Active Members',state.g?activeRosterMembers().filter(m=>(m._g||memberG(m._name))===state.g).length:activeRosterMembers().length],
     ['Vault Events',periodGroups.size],
@@ -1615,18 +1627,17 @@ function renderVaults(){
    </section>
    ${tableCard('Vault Results',rows,
     ['Player','G-Level','Expected Builds','Built','Missing','Compliance','Status'],
-    r=>[pLink(r._name),gBadge(r._g),fmt(r._expected),fmt(r._built),fmt(r._missing),r._rate.toFixed(1)+'%',statusBadge(r._missing===0?'Fully Compliant':(r._built===0?'No Builds':'Partial Compliance'))],
+    r=>[pLink(r._name),gBadge(r._g),fmt(r._expected),fmt(r._built),fmt(r._missing),r._rate.toFixed(1)+'%',statusBadge(r._missing===0?'Built All':'Missing')],
     `Each player appears once. Expected Builds counts only eligible, non-exempt Vault events in ${esc(period.label)}. Vault Level is not summed across events.`
    )}
    <section class="vault-menu">
-    ${card('Partial Compliance','Players who completed at least one required Vault build but missed one or more eligible builds in the selected period.',partial.length?`<ul class="list">${partial.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')} · ${r._built}/${r._expected} · ${r._rate.toFixed(1)}%</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'Partial Compliance')}
-    ${card('No Builds','Players who completed none of their required Vault builds in the selected period.',noBuilds.length?`<ul class="list">${noBuilds.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')} · 0/${r._expected}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'No Builds')}
-    ${listCard('Repeat Misses',repeat.map(r=>({...r,_score:r._missing})),'Repeat Risk','Players who missed two or more required Vault builds. The number shown is the number of eligible Vault events missed.')}
-    ${card('Fully Compliant','Players who built every Vault they were eligible and required to build in the selected period.',compliant.length?`<ul class="list">${compliant.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')} · ${r._built}/${r._expected}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'100% Compliance')}
+    ${card('Non-Vault Builders','Players who missed at least one required Vault build in the selected period.',missing.length?`<ul class="list">${missing.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'Missing Builds')}
+    ${listCard('Repeat Non-Vault Builders',repeat.map(r=>({...r,_score:r._missing})),'Repeat Risk','Players who missed two or more required Vault builds. The number shown is the number of eligible Vault events missed.')}
+    ${card('Fully Compliant','Players who built every Vault they were eligible and required to build in the selected period.',compliant.length?`<ul class="list">${compliant.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g||'')}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,'100% Compliance')}
    </section>`;
 
   chartBarPercent('c1',Object.fromEntries(rows.slice(0,10).map(r=>[r._name,r._rate])),'Compliance');
-  chartPie('c2',{'Fully Compliant':compliant.length,'Partial Compliance':partial.length,'No Builds':noBuilds.length});
+  chartPie('c2',{'Completed Builds':completedBuilds,'Missing Builds':Math.max(0,expectedBuilds-completedBuilds)});
   bindModulePeriodControls('vaults');
   return;
  }
