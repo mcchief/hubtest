@@ -845,7 +845,7 @@ function tipHtml(title, rows){return `<b>${esc(title)}</b>`+rows.map(r=>`<div><s
 const EXEC_COPY={
  overview:'A clear view of the current clan: member count, clan might, G-Level spread and strongest players.',
  growth:'Shows how the clan and individual players are progressing, including new, returning and departing members.',
- consolidated:'Cross-event performance intelligence showing consistent performers, mixed performance, underperformance and exemption-protected results.',
+ consolidated:'Compares each player across recorded events, while protecting valid exemptions and applying the membership rules that were in force on each event date.',
  tinman:'Shows who took part, who met the required target and who needs attention.',
  darkOmens:'Shows participation, Essence earned and whether each player met the required target.',
  trials:'Shows participation, points earned and whether each player met the required target.',
@@ -1193,7 +1193,7 @@ const CONSOLIDATED_EVENTS=[
  {key:'tinman',label:'Tinman',short:'Tinman',type:'score'},
  {key:'darkOmens',label:'Dark Omens',short:'Dark Omens',type:'score'},
  {key:'trials',label:'Trials of Olympus',short:'Trials',type:'score'},
- {key:'ragnarok',label:'Ragnarök',short:'Ragnarök',type:'score'},
+ {key:'ragnarok',label:'Ragnarök',short:'Ragnarök',type:'participation'},
  {key:'chestpoints',label:'Chest Points',short:'Chest',type:'score'},
  {key:'vaults',label:'Vaults',short:'Vaults',type:'vault'}
 ];
@@ -1217,20 +1217,14 @@ function activeExemptionReason(member){
  return reasons.join(', ');
 }
 function consolidatedDisplayClass(r){
- // One evidence standard for everyone: at least 3 assessed/observed records.
- // Active exemptions remain fully protected from accountability penalties,
- // but observed participation may still establish a performance classification.
- if(r._activeExemption){
-  if((r._observedRecords||0)<3)return 'Exempted / Limited';
-  if(r._observedRate>=80)return 'Consistent Performer';
-  if(r._observedRate<=40)return 'Consistent Underperformer';
-  return 'Mixed Performance';
- }
+ // Classification is based only on accountable records in the selected period.
+ // Exempt records are protected and never become failures.
+ // If there is too little accountable evidence and the period contains exemptions,
+ // show Exempted / Limited rather than using today's exemption status to rewrite history.
+ if(r._classification==='Limited Data' && (r._exemptRecords||0)>0)return 'Exempted / Limited';
  return r._classification;
 }
 function consolidatedDisplayScore(r){
- const cls=consolidatedDisplayClass(r);
- if(r._activeExemption && cls!=='Exempted / Limited')return r._observedRate;
  return r._rate;
 }
 function consolidatedSortGroup(r){
@@ -1254,12 +1248,13 @@ function consolidatedSortRows(rows){
 }
 function consolidatedClassificationCell(r){
  const displayClass=consolidatedDisplayClass(r);
- if(r._activeExemption){
-  const reason=r._exemptReason?` title="${escAttr(r._exemptReason)}"`:'';
+ const hasPeriodExemption=(r._exemptRecords||0)>0;
+ if(hasPeriodExemption){
+  const reason=r._periodExemptReasons?` title="${escAttr(r._periodExemptReasons)}"`:'';
   if(displayClass!=='Exempted / Limited'){
-   return `${consolidatedBadge(displayClass)}<span class="exempt-tag"${reason}>🔵 Exempt</span>`;
+   return `${consolidatedBadge(displayClass)}<span class="exempt-tag"${reason}>🔵 Exempt record(s)</span>`;
   }
-  return `<span class="exempt-tag"${reason}>🔵 Exempt</span>`;
+  return `<span class="exempt-tag"${reason}>🔵 Exempted / Limited</span>`;
  }
  return consolidatedBadge(displayClass);
 }
@@ -1294,29 +1289,19 @@ function eventGroupDate(groupRows,eventId){
 function consolidatedPeriodBounds(){
  const mode=state.consolidatedPeriod||'all';
  if(mode==='all')return {mode,start:null,end:null,label:'All Events'};
+ if(mode==='current')return {mode,start:null,end:null,label:'Current'};
  const today=todayDate();
  let start=null,end=today,label='';
  if(mode==='7d'){start=new Date(today);start.setDate(start.getDate()-6);label='Last 7 Days'}
-  else if(mode==='15d'){start=new Date(today);start.setDate(start.getDate()-14);label='Last 15 Days'}
+ else if(mode==='15d'){start=new Date(today);start.setDate(start.getDate()-14);label='Last 15 Days'}
  else if(mode==='30d'){start=new Date(today);start.setDate(start.getDate()-29);label='Last 30 Days'}
  else if(mode==='60d'){start=new Date(today);start.setDate(start.getDate()-59);label='Last 60 Days'}
  else if(mode==='90d'){start=new Date(today);start.setDate(start.getDate()-89);label='Last 90 Days'}
- else if(mode==='month'){start=new Date(today.getFullYear(),today.getMonth(),1);label='This Month'}
- else if(mode==='prevmonth'){
-  start=new Date(today.getFullYear(),today.getMonth()-1,1);
-  end=new Date(today.getFullYear(),today.getMonth(),0);
-  label='Previous Month';
- }else if(mode==='custom'){
-  start=startOfDay(parseAnyDate(state.consolidatedFrom));
-  end=startOfDay(parseAnyDate(state.consolidatedTo));
-  if(start&&end&&start>end){const t=start;start=end;end=t}
-  label=(start||end)?`${start?start.toISOString().slice(0,10):'Start'} → ${end?end.toISOString().slice(0,10):'Today'}`:'Custom Range';
- }
  return {mode,start,end,label};
 }
 function consolidatedEventInPeriod(eventDate){
  const p=consolidatedPeriodBounds();
- if(p.mode==='all')return true;
+ if(p.mode==='all'||p.mode==='current')return true;
  const d=startOfDay(eventDate);
  if(!d)return false;
  if(p.start&&d<p.start)return false;
@@ -1325,22 +1310,14 @@ function consolidatedEventInPeriod(eventDate){
 }
 function consolidatedPeriodControls(){
  const p=consolidatedPeriodBounds();
- const custom=state.consolidatedPeriod==='custom';
- return `<section class="glass"><div class="panel-head"><div><h3>Performance Period</h3><p class="sub">Recalculate consolidated performance using only events inside the selected period. All Time remains the default.</p></div><span class="chip">${esc(p.label)}</span></div><div class="panel-body"><div class="period-calendar-grid">
-   <div><label>Period</label><select class="select" id="conPeriod"><option value="all">All Time</option><option value="7d">Last 7 Days</option><option value="15d">Last 15 Days</option><option value="30d">Last 30 Days</option><option value="60d">Last 60 Days</option><option value="90d">Last 90 Days</option><option value="month">This Month</option><option value="prevmonth">Previous Month</option><option value="custom">Custom Range</option></select></div>
-   <div style="${custom?'':'display:none'}"><label>From Date</label><div class="calendar-field"><input class="input" type="date" id="conFrom" value="${escAttr(state.consolidatedFrom)}"><button class="calendar-pick" id="conFromPick" type="button" title="Open calendar" aria-label="Open From Date calendar">📅</button></div></div>
-   <div style="${custom?'':'display:none'}"><label>To Date</label><div class="calendar-field"><input class="input" type="date" id="conTo" value="${escAttr(state.consolidatedTo)}"><button class="calendar-pick" id="conToPick" type="button" title="Open calendar" aria-label="Open To Date calendar">📅</button></div></div>
+ return `<section class="glass"><div class="panel-head"><div><h3>Analysis Period</h3><p class="sub">Choose the period used for cross-event performance. All Events shows current Active members only. Historical day ranges use the membership that applied on each event date.</p></div><span class="chip">${esc(p.label)}</span></div><div class="panel-body"><div class="period-calendar-grid">
+   <div><label>Period</label><select class="select" id="conPeriod"><option value="all">All Events</option><option value="current">Current</option><option value="7d">Last 7 Days</option><option value="15d">Last 15 Days</option><option value="30d">Last 30 Days</option><option value="60d">Last 60 Days</option><option value="90d">Last 90 Days</option></select></div>
   </div></div></section>`;
 }
 function bindConsolidatedPeriodControls(){
  const period=$('conPeriod');if(!period)return;
  period.value=state.consolidatedPeriod||'all';
  period.onchange=e=>{state.consolidatedPeriod=e.target.value;renderConsolidatedPerformance();scheduleDynamicLayout(document);applyDashboardLanguage()};
- const from=$('conFrom'),to=$('conTo');
- if(from)from.onchange=e=>{state.consolidatedFrom=e.target.value;renderConsolidatedPerformance();scheduleDynamicLayout(document);applyDashboardLanguage()};
- if(to)to.onchange=e=>{state.consolidatedTo=e.target.value;renderConsolidatedPerformance();scheduleDynamicLayout(document);applyDashboardLanguage()};
- const openCalendar=input=>{if(!input)return;try{if(typeof input.showPicker==='function')input.showPicker();else input.focus()}catch(_){input.focus()}};
- const fp=$('conFromPick'),tp=$('conToPick');if(fp)fp.onclick=()=>openCalendar(from);if(tp)tp.onclick=()=>openCalendar(to);
 }
 function bestPlayerRow(rows,member,dataset){
  const matches=(rows||[]).filter(r=>samePlayer(r,member));
@@ -1349,7 +1326,9 @@ function bestPlayerRow(rows,member,dataset){
  return matches.sort((a,b)=>num(b._score)-num(a._score))[0];
 }
 function consolidatedPerformanceRows(){
- let roster=activeRosterMembers().map(m=>({...m,_g:m._g||memberG(m._name)}));
+ const period=consolidatedPeriodBounds();
+ let roster=(period.mode==='all'||period.mode==='current'?activeRosterMembers():state.data.members)
+  .map(m=>({...m,_g:m._g||memberG(m._name)}));
  if(state.g)roster=roster.filter(m=>m._g===state.g);
 
  const result=new Map(roster.map(m=>[key(m._id||m._name),{
@@ -1357,6 +1336,7 @@ function consolidatedPerformanceRows(){
   _success:0,_fail:0,_eligible:0,
   _exemptRecords:0,_exemptParticipated:0,
   _observedSuccess:0,_observedRecords:0,
+  _periodExemptReasons:new Set(),
   _eventTypes:new Set(),_events:{}
  }]));
 
@@ -1369,27 +1349,48 @@ function consolidatedPerformanceRows(){
    groups.get(gk).push(r);
   });
 
+  // Current means the latest recorded event for EACH module, not today's date.
+  let currentEventId=null;
+  if(period.mode==='current'){
+   let latestTime=-Infinity;
+   groups.forEach((groupRows,eventId)=>{
+    const d=eventGroupDate(groupRows,eventId);
+    const t=d?startOfDay(d).getTime():-Infinity;
+    if(t>latestTime){latestTime=t;currentEventId=eventId}
+   });
+  }
+
   groups.forEach((groupRows,eventId)=>{
    const eventDate=eventGroupDate(groupRows,eventId);
+   if(period.mode==='current' && eventId!==currentEventId)return;
    if(!consolidatedEventInPeriod(eventDate))return;
    const meta=eventMeta(eventId);
+
    roster.forEach(member=>{
+    // Membership is always tested on the actual event date.
     if(!memberIsActiveForDate(member._name,eventDate))return;
+
     const row=bestPlayerRow(groupRows,member,cfg.key);
     const participated=row?rowHasParticipation(cfg.key,row):false;
     const exempt=isPlayerExempt(eventId,member,eventDate);
     const rk=key(member._id||member._name),rec=result.get(rk);
     if(!rec)return;
 
-    let target=0,observedSuccess=false,accountabilitySuccess=false;
+    let observedSuccess=false,accountabilitySuccess=false;
+
     if(cfg.type==='vault'){
      observedSuccess=!!row&&rowHasParticipation('vaults',row);
      accountabilitySuccess=observedSuccess;
+    }else if(cfg.type==='participation'){
+     // Ragnarök: participation only. No score target is required.
+     observedSuccess=participated;
+     accountabilitySuccess=participated;
     }else{
-     target=num(row?._target)||num(meta._target);
-     if(target<=0)return;
+     // Target events: player/event target first, then Event Setup fallback.
+     const target=num(row?._target)||num(meta._target);
+     if(target<=0)return; // no valid target = do not assess rather than create a false failure
      observedSuccess=!!row&&participated&&num(row._score)>=target;
-     accountabilitySuccess=!!row&&num(row._score)>=target;
+     accountabilitySuccess=!!row&&participated&&num(row._score)>=target;
     }
 
     rec._events[cfg.key]=rec._events[cfg.key]||{
@@ -1398,7 +1399,7 @@ function consolidatedPerformanceRows(){
      observed:0,observedSuccess:0
     };
 
-    // Observed performance records what the player actually did, including while exempt.
+    // Observed performance is informational only and never overrides accountability.
     if(participated){
      rec._observedRecords++;
      rec._events[cfg.key].observed++;
@@ -1408,10 +1409,16 @@ function consolidatedPerformanceRows(){
      }
     }
 
-    // Exempt records remain visible but never create an accountability success/failure.
+    // Exempt records remain visible but never create success/failure accountability.
     if(exempt){
      rec._exemptRecords++;
      rec._events[cfg.key].exempt++;
+     const exRows=(state.data.eventExemptions||[]).filter(x=>{
+      const pid=key(member?._id),pname=key(member?._name);
+      const matches=(pid&&key(x._id)===pid)||(pname&&key(x._name)===pname);
+      return matches&&exemptionAppliesToEvent(x,eventId,eventDate);
+     });
+     exRows.map(x=>clean(x._reason)).filter(Boolean).forEach(x=>rec._periodExemptReasons.add(x));
      if(participated){
       rec._exemptParticipated++;
       rec._events[cfg.key].exemptParticipated++;
@@ -1437,18 +1444,15 @@ function consolidatedPerformanceRows(){
   const coverage=r._eventTypes.size;
   const rate=r._eligible?r._success/r._eligible*100:0;
   const observedRate=r._observedRecords?r._observedSuccess/r._observedRecords*100:0;
-  // Minimum classification evidence: 3 eligible assessed records.
-  // Event-type coverage is retained for reporting only; it is not a classification gate.
   const limited=r._eligible<3;
   const classification=limited?'Limited Data':rate>=80?'Consistent Performer':rate<=40?'Consistent Underperformer':'Mixed Performance';
-  const member={_id:r._id,_name:r._name};
-  const activeEx=currentExemptionsForMember(member);
   return {
    ...r,
    _coverage:coverage,_rate:rate,_observedRate:observedRate,
    _limited:limited,_classification:classification,
-   _activeExemption:activeEx.length>0,
-   _exemptReason:activeExemptionReason(member)
+   _periodExemptReasons:[...r._periodExemptReasons].join(', '),
+   _activeExemption:false,
+   _exemptReason:''
   };
  });
 }
@@ -1458,7 +1462,7 @@ function renderConsolidatedPerformance(){
  const mixed=consolidatedSortRows(rows.filter(r=>consolidatedDisplayClass(r)==='Mixed Performance'));
  const under=consolidatedSortRows(rows.filter(r=>consolidatedDisplayClass(r)==='Consistent Underperformer'));
  const exemptLimited=consolidatedSortRows(rows.filter(r=>consolidatedDisplayClass(r)==='Exempted / Limited'));
- const limited=rows.filter(r=>!r._activeExemption&&r._classification==='Limited Data');
+ const limited=rows.filter(r=>consolidatedDisplayClass(r)==='Limited Data');
  const eligibleRecords=rows.reduce((s,r)=>s+r._eligible,0);
  const successfulRecords=rows.reduce((s,r)=>s+r._success,0);
  const overallRate=eligibleRecords?successfulRecords/eligibleRecords*100:0;
