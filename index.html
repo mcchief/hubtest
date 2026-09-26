@@ -894,138 +894,95 @@ function renderEventPeriodModule(k,title,scoreLabel){
  const rows=selectedRows(state.data[k]||[]).filter(r=>r._name);
  const isMandatoryNoTarget=(k==='ragnarok');
  const eventMap={};
-
  rows.forEach(r=>{
    const eid=clean(r._eventId)||clean(r._event)||clean(r._week)||'Event';
    (eventMap[eid]=eventMap[eid]||[]).push(r);
  });
 
  const playerMap={}, trend={}, gStats={};
- let eligibleEntries=0, participationEntries=0, exemptionInstances=0, exemptParticipationEntries=0;
+ let eligibleEntries=0, participationEntries=0, exemptionInstances=0;
  let total=0, met=0, below=0;
 
  Object.entries(eventMap).forEach(([eid,erows])=>{
    const edate=parseAnyDate(eventMeta(eid)._date)||parseAnyDate(erows.find(r=>r._event)?._event)||parseAnyDate(erows.find(r=>r._week)?._week)||null;
-   const active=erows.filter(r=>memberIsActiveForDate(r._name,edate));
    const eligibleMembersForEvent=filteredRows(eligibleMembersForDate(edate).map(m=>({...m,_g:m._g||memberG(m._name)})));
-   const exNames=new Set();
-
-   eligibleMembersForEvent.forEach(m=>{
-     if(isPlayerExempt(eid,m,edate)) exNames.add(key(m._name));
+   const rowByPlayer=new Map();
+   erows.filter(r=>r._name&&memberIsActiveForDate(r._name,edate)).forEach(r=>{
+     const kk=key(r._name); if(!kk)return;
+     const old=rowByPlayer.get(kk);
+     if(!old||num(r._score)>num(old._score))rowByPlayer.set(kk,r);
    });
-   active.forEach(r=>{
-     if(rowIsExempt(eid,r,edate)) exNames.add(key(r._name));
+   const exNames=new Set();
+   eligibleMembersForEvent.forEach(m=>{
+     const rr=rowByPlayer.get(key(m._name));
+     if(isPlayerExempt(eid,m,edate)||(rr&&rowIsExempt(eid,rr,edate)))exNames.add(key(m._name));
    });
    exemptionInstances += exNames.size;
 
-   const accountable=active.filter(r=>!rowIsExempt(eid,r,edate));
-   const accountableParticipants=accountable.filter(r=>rowHasParticipation(k,r));
-   const exemptParticipants=active.filter(r=>rowIsExempt(eid,r,edate)&&rowHasParticipation(k,r));
-   const eventEligible=Math.max(0, eligibleMembersForEvent.length-exNames.size);
-
-   eligibleEntries += eventEligible;
-   participationEntries += new Set(accountableParticipants.map(r=>key(r._name))).size;
-   exemptParticipationEntries += new Set(exemptParticipants.map(r=>key(r._name))).size;
-   total += active.filter(r=>rowHasParticipation(k,r)).reduce((a,r)=>a+num(r._score),0);
-
-   if(isMandatoryNoTarget){
-     below += Math.max(0,eventEligible-new Set(accountableParticipants.map(r=>key(r._name))).size);
-   } else {
-     accountable.forEach(r=>{
-       if(r._target>0){
-         if(r._score>=r._target) met++; else below++;
-       }
-     });
-   }
-
-   const label=clean(eventMeta(eid)._date)||clean(erows[0]?._event)||clean(erows[0]?._week)||eid;
-   trend[label]=eventEligible?Math.round((new Set(accountableParticipants.map(r=>key(r._name))).size/eventEligible)*1000)/10:0;
-
-   active.forEach(r=>{
-     const kk=key(r._name); if(!kk)return;
-     const exempt=rowIsExempt(eid,r,edate), participated=rowHasParticipation(k,r);
+   let eventParticipants=0;
+   eligibleMembersForEvent.forEach(m=>{
+     const kk=key(m._name); if(!kk||exNames.has(kk))return;
+     const r=rowByPlayer.get(kk);
+     const participated=!!(r&&rowHasParticipation(k,r));
+     const score=r?num(r._score):0;
+     const target=r?num(r._target):0;
      let p=playerMap[kk];
-     if(!p)p=playerMap[kk]={_name:r._name,_g:r._g||memberG(r._name),_eligible:0,_participated:0,_score:0,_met:0,_missed:0,_events:new Set()};
-     p._events.add(eid);
-     if(participated){p._participated++;p._score+=num(r._score)}
-     if(!exempt){
-       p._eligible++;
-       if(!isMandatoryNoTarget&&r._target>0){if(r._score>=r._target)p._met++;else p._missed++}
-       if(isMandatoryNoTarget&&!participated)p._missed++;
+     if(!p)p=playerMap[kk]={_name:m._name,_g:(r?._g)||m._g||memberG(m._name),_eligible:0,_participated:0,_score:0,_expected:0,_met:0,_missed:0,_events:new Set()};
+     p._events.add(eid); p._eligible++;
+     if(participated){p._participated++;eventParticipants++;}
+     p._score+=score;
+     if(isMandatoryNoTarget){
+       if(!participated){p._missed++;below++;} else met++;
+     }else if(target>0){
+       p._expected+=target;
+       if(score>=target){p._met++;met++;}else{p._missed++;below++;}
      }
-     const g=r._g||memberG(r._name)||'Unknown';
+     const g=p._g||'Unknown';
      gStats[g]=gStats[g]||{eligible:0,met:0};
-     if(!exempt){
-       gStats[g].eligible++;
-       if(isMandatoryNoTarget ? participated : (r._target>0&&r._score>=r._target))gStats[g].met++;
-     }
+     gStats[g].eligible++;
+     if(isMandatoryNoTarget?participated:(target>0&&score>=target))gStats[g].met++;
    });
+   eligibleEntries += Math.max(0,eligibleMembersForEvent.length-exNames.size);
+   participationEntries += eventParticipants;
+   total += erows.filter(r=>r._name&&memberIsActiveForDate(r._name,edate)&&!rowIsExempt(eid,r,edate)&&rowHasParticipation(k,r)).reduce((a,r)=>a+num(r._score),0);
+   const label=clean(eventMeta(eid)._date)||clean(erows[0]?._event)||clean(erows[0]?._week)||eid;
+   const eventEligible=Math.max(0,eligibleMembersForEvent.length-exNames.size);
+   trend[label]=eventEligible?Math.round((eventParticipants/eventEligible)*1000)/10:0;
  });
 
- const players=Object.values(playerMap).map(p=>({
-   ...p,
-   _eventsCount:p._events.size,
-   _avg:p._participated?p._score/p._participated:0,
-   _success:p._eligible?Math.round((p._met/p._eligible)*1000)/10:0,
-   _missRate:p._eligible?Math.round((p._missed/p._eligible)*1000)/10:0
- }));
+ const players=Object.values(playerMap).map(p=>({...p,_eventsCount:p._events.size,_avg:p._participated?p._score/p._participated:0,_success:p._eligible?Math.round((p._met/p._eligible)*1000)/10:0}));
  const participatedPlayers=players.filter(p=>p._participated>0);
- const under=players.filter(p=>p._missed>0).sort((a,b)=>b._missRate-a._missRate||b._missed-a._missed||a._name.localeCompare(b._name));
- const repeat=players.filter(p=>p._missed>=2).sort((a,b)=>b._missRate-a._missRate||b._missed-a._missed||a._name.localeCompare(b._name));
+ // AGREED PERIOD LOGIC: overall period underperformance = total achieved < total expected.
+ const under=isMandatoryNoTarget
+   ? players.filter(p=>p._missed>0).sort((a,b)=>b._missed-a._missed||a._name.localeCompare(b._name))
+   : players.filter(p=>p._expected>0&&p._score<p._expected).sort((a,b)=>(a._score/a._expected)-(b._score/b._expected)||a._name.localeCompare(b._name));
+ // Repeat risk remains event-by-event: below target / non-participation in 2+ eligible events.
+ const repeat=players.filter(p=>p._missed>=2).sort((a,b)=>b._missed-a._missed||a._name.localeCompare(b._name));
  const top=[...participatedPlayers].sort((a,b)=>b._score-a._score||a._name.localeCompare(b._name)).slice(0,10);
  const currentActive=filteredRows((state.data.members||[]).filter(m=>String(m._status||'Active').toLowerCase()==='active')).length || new Set(rows.map(r=>key(r._name))).size;
- const successDen=met+below;
- const periodLabel=modulePeriodBounds(k).label;
+ const successDen=met+below, periodLabel=modulePeriodBounds(k).label;
 
- const aggTable=tableCard(
-   'Player Results',
-   [...players].sort((a,b)=>b._score-a._score||a._name.localeCompare(b._name)),
-   ['Player','G-Level','Eligible Events','Participated','Total '+scoreLabel,'Average '+scoreLabel,isMandatoryNoTarget?'Missed Events':'Targets Met',isMandatoryNoTarget?'Miss Rate':'Targets Missed',isMandatoryNoTarget?'Participation %':'Success %'],
-   r=>[
-     pLink(r._name),gBadge(r._g),r._eligible,r._participated,fmt(r._score),fmt(Math.round(r._avg)),
-     isMandatoryNoTarget?r._missed:r._met,
-     isMandatoryNoTarget?(r._missRate+'%'):r._missed,
-     isMandatoryNoTarget?(r._eligible?Math.round((r._participated/r._eligible)*1000)/10:0)+'%':r._success+'%'
-   ],
-   `${players.length} unique players aggregated across ${Object.keys(eventMap).length} Tinman/event records in ${periodLabel}. Each player appears once.`
- );
+ // Player Results is intentionally preserved exactly as the existing period implementation.
+ const aggTable=tableCard('Player Results',[...players].sort((a,b)=>b._score-a._score||a._name.localeCompare(b._name)),['Player','G-Level','Eligible Events','Participated','Total '+scoreLabel,'Average '+scoreLabel,isMandatoryNoTarget?'Missed Events':'Targets Met',isMandatoryNoTarget?'Miss Rate':'Targets Missed',isMandatoryNoTarget?'Participation %':'Success %'],r=>[pLink(r._name),gBadge(r._g),r._eligible,r._participated,fmt(r._score),fmt(Math.round(r._avg)),isMandatoryNoTarget?r._missed:r._met,isMandatoryNoTarget?((r._eligible?Math.round(r._missed/r._eligible*1000)/10:0)+'%'):r._missed,isMandatoryNoTarget?(r._eligible?Math.round((r._participated/r._eligible)*1000)/10:0)+'%':r._success+'%'],`${players.length} unique players aggregated across ${Object.keys(eventMap).length} Tinman/event records in ${periodLabel}. Each player appears once.`);
 
- const periodList=(title,arr,sub)=>card(title,sub,arr.length?`<ul class="list">${arr.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g)}</span><span>${title==='Top Performers'?fmt(r._score):(isMandatoryNoTarget?`Did Not Participate: ${r._missed} of ${r._eligible}`:`Below Target: ${r._missed} of ${r._eligible}`)}</span></li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,title==='Top Performers'?'Top':'Period');
+ const simplePeriodCard=(title,arr,sub,mode)=>card(title,sub,arr.length?`<ul class="list">${arr.map(r=>`<li><span>${pLink(r._name)}</span><span>${gBadge(r._g)}</span>${mode==='repeat'?`<span>${fmt(r._score)} · ${r._missed}</span>`:mode==='top'?`<span>${fmt(r._score)}</span>`:''}</li>`).join('')}</ul>`:`<div class="empty">No matching records.</div>`,mode==='top'?'Top':'Period');
 
  $('app').innerHTML=`
  <section class="content-head glass"><h2>${title}</h2><p class="sub">${periodLabel} performance intelligence. Multiple event records are aggregated so each player appears once in player tables.</p></section>
  ${modulePeriodControls(k)}
- <section class="kpis">${kpiHtml([
-   ['Current Active Members',currentActive],
-   ['Events in Period',Object.keys(eventMap).length],
-   ['Exemption Instances',exemptionInstances],
-   ['Eligible Entries',eligibleEntries],
-   ['Participation Entries',participationEntries],
-   ['Participation %',pct(participationEntries,eligibleEntries)],
-   ['Total '+scoreLabel,short(total)],
-   [isMandatoryNoTarget?'Missed Entries':'Target Success %',isMandatoryNoTarget?below:pct(met,successDen)]
- ])}</section>
- <section class="chart-grid">
-   <div class="glass"><div class="panel-head"><h3>Top 10 ${scoreLabel}</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div>
-   <div class="glass"><div class="panel-head"><h3>G-Level Performance</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div>
-   <div class="glass"><div class="panel-head"><h3>${isMandatoryNoTarget?'Participation Status':'Historical Event Results'}</h3></div><div class="panel-body"><div class="chartbox" id="c3"></div></div></div>
-   <div class="glass"><div class="panel-head"><h3>Participation Trend</h3></div><div class="panel-body"><div class="chartbox" id="c4"></div></div></div>
- </section>
+ <section class="kpis">${kpiHtml([['Current Active Members',currentActive],['Events in Period',Object.keys(eventMap).length],['Exemption Instances',exemptionInstances],['Eligible Entries',eligibleEntries],['Participation Entries',participationEntries],['Participation %',pct(participationEntries,eligibleEntries)],['Total '+scoreLabel,short(total)],[isMandatoryNoTarget?'Missed Entries':'Target Success %',isMandatoryNoTarget?below:pct(met,successDen)]])}</section>
+ <section class="chart-grid"><div class="glass"><div class="panel-head"><h3>Top 10 ${scoreLabel}</h3></div><div class="panel-body"><div class="chartbox" id="c1"></div></div></div><div class="glass"><div class="panel-head"><h3>G-Level Performance</h3></div><div class="panel-body"><div class="chartbox" id="c2"></div></div></div><div class="glass"><div class="panel-head"><h3>${isMandatoryNoTarget?'Participation Status':'Historical Event Results'}</h3></div><div class="panel-body"><div class="chartbox" id="c3"></div></div></div><div class="glass"><div class="panel-head"><h3>Participation Trend</h3></div><div class="panel-body"><div class="chartbox" id="c4"></div></div></div></section>
  ${aggTable}
  <section class="intel-grid">
-   ${periodList(isMandatoryNoTarget?'Did Not Participate':'Below Target',under,isMandatoryNoTarget?'Players who did not participate in at least one eligible event in the selected period.':'Players who finished below their required target in at least one eligible event.')}
-   ${periodList('Top Performers',top,'Top unique players by total points in the selected period.')}
-   ${periodList(isMandatoryNoTarget?'Repeated Non-Participation':'Repeatedly Below Target',repeat,isMandatoryNoTarget?'Players who did not participate in two or more eligible events in the selected period.':'Players who finished below their required target in two or more eligible events.')}
+   ${simplePeriodCard(isMandatoryNoTarget?'Non-Participants':'Period Underperformers',under,isMandatoryNoTarget?'Players who did not participate in at least one expected Ragnarök event.':'Players whose total achieved points are below their total expected points for the selected period.','simple')}
+   ${simplePeriodCard('Top Performers',top,'Top unique players by total points in the selected period.','top')}
+   ${simplePeriodCard(isMandatoryNoTarget?'Repeat Non-Participants':'Repeat Underperformers',repeat,isMandatoryNoTarget?'Players who did not participate in two or more expected Ragnarök events.':'Players who finished below their applicable event target in two or more eligible events.','repeat')}
  </section>`;
-
  chartBar('c1',Object.fromEntries(top.map(r=>[r._name,r._score])));
  chartBar('c2',Object.fromEntries(Object.entries(gStats).map(([g,v])=>[g,v.eligible?Math.round(v.met/v.eligible*1000)/10:0])));
- if(isMandatoryNoTarget)chartPie('c3',{'Participated Entries':participationEntries,'Missed Entries':Math.max(0,eligibleEntries-participationEntries)});
- else chartPie('c3',{'Met Target':met,'Below Target':below});
- chartLine('c4',trend);
- bindModulePeriodControls(k);
+ if(isMandatoryNoTarget)chartPie('c3',{'Participated Entries':participationEntries,'Missed Entries':Math.max(0,eligibleEntries-participationEntries)}); else chartPie('c3',{'Met Target':met,'Below Target':below});
+ chartLine('c4',trend); bindModulePeriodControls(k);
 }
-
 function renderEventModule(k,title,scoreLabel){
  if(!state.selected){renderEventPeriodModule(k,title,scoreLabel);return;}
  const sourceRows=selectedRows(state.data[k]||[]).filter(r=>r._name),
@@ -1110,12 +1067,12 @@ function renderEventModule(k,title,scoreLabel){
 
  <section class="intel-grid">
    ${isMandatoryNoTarget
-      ?listCard('Did Not Participate',nonParticipants,'Mandatory Participation','Active, eligible, non-exempt players who did not participate in the current Ragnarök event.')
-      :listCard('Below Target',underperformers,'Below Target','Players who finished below their required target in the current event.')}
+      ?listCard('Non-Participants',nonParticipants,'Mandatory Participation','Active, eligible, non-exempt players with no Ragnarök participation recorded for the current event.')
+      :listCard('Underperformers',underperformers,'Underperformers',EXEC_COPY.underperformers)}
    ${listCard('Top Performers',[...participantRows].sort((a,b)=>b._score-a._score).slice(0,10),'Top',EXEC_COPY.topPerformers)}
    ${isMandatoryNoTarget
-      ?listCard('Repeated Non-Participation',repeatNonParticipants(k,eventId).slice(0,10),'Repeat Participation','Players who did not participate in two or more eligible Ragnarök events. Valid exemptions and membership dates are fully applied.')
-      :listCard('Repeatedly Below Target',repeatUnder(k,eventId).slice(0,10),'Repeated Below Target','Players who finished below their required target in two or more eligible events.')}
+      ?listCard('Repeat Non-Participants',repeatNonParticipants(k,eventId).slice(0,10),'Repeat Risk','Players who missed participation in two or more eligible Ragnarök events. Valid exemptions and membership dates are fully applied.')
+      :listCard('Repeat Underperformers',repeatUnder(k,eventId).slice(0,10),'Repeat Risk',EXEC_COPY.repeatRisk)}
  </section>`;
 
  chartBar('c1',topObj(participantRows,'_name','_score',10));
