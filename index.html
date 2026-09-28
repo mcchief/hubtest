@@ -2218,3 +2218,44 @@ initLive();
  enhance();new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes)if(n.nodeType===1)enhance(n)}).observe(document.body,{childList:true,subtree:true});
 })();
 </script></body></html>
+<style id="woa-global-player-click-style">
+[data-woa-player-link]{cursor:pointer!important}
+[data-woa-player-link]:hover{text-decoration:underline;text-underline-offset:2px}
+</style>
+<script id="woa-global-player-click">
+(function(){
+"use strict";
+const N=v=>String(v??"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim().toLowerCase();
+function names(){
+ const m=new Map(), src=[];
+ try{
+  ["players","roster","playerRoster","members"].forEach(k=>{if(Array.isArray(window[k]))src.push(window[k])});
+  if(window.DATA) ["players","roster","playerRoster","members"].forEach(k=>{if(Array.isArray(DATA[k]))src.push(DATA[k])});
+ }catch(e){}
+ src.forEach(a=>a.forEach(x=>{let n=typeof x==="string"?x:x&&(x.name||x.player||x.playerName||x["Player Name"]||x["Official Player Name"]);if(n)m.set(N(n),String(n).trim())}));
+ document.querySelectorAll("[data-player],[data-player-name],option").forEach(e=>{let n=e.dataset.player||e.dataset.playerName||e.value||e.textContent;if(n&&n.trim().length>1)m.set(N(n),n.trim())});
+ return m;
+}
+function openP(n){
+ for(const f of ["openPlayerProfile","showPlayerProfile","openProfile","selectPlayer","viewPlayerProfile"]){
+  try{if(typeof window[f]==="function"){window[f](n);return}}catch(e){}
+ }
+ const i=document.querySelector('#playerSearch,#player-search,input[placeholder*="Search player" i],input[type="search"]');
+ if(i){i.value=n;i.dispatchEvent(new Event("input",{bubbles:true}));i.dispatchEvent(new Event("change",{bubbles:true}));
+ const b=document.querySelector('#playerSearchBtn,#player-search-btn,[data-action="player-search"]');if(b)b.click();}
+}
+function decorate(){
+ const m=names(); if(!m.size)return;
+ document.querySelectorAll("td,th,li,p,span,strong,b,div").forEach(e=>{
+  if(e.children.length||e.closest("button,a,input,select,textarea,canvas,svg,script,style,[contenteditable=true],.modal,.player-profile"))return;
+  const n=m.get(N(e.textContent)); if(!n)return;
+  e.dataset.woaPlayerLink=n;e.setAttribute("role","link");e.setAttribute("tabindex","0");e.title="Open "+n+"'s Player Profile";
+ });
+}
+document.addEventListener("click",e=>{const x=e.target.closest?.("[data-woa-player-link]");if(x){e.preventDefault();e.stopPropagation();openP(x.dataset.woaPlayerLink)}},true);
+document.addEventListener("keydown",e=>{const x=e.target.closest?.("[data-woa-player-link]");if(x&&(e.key==="Enter"||e.key===" ")){e.preventDefault();openP(x.dataset.woaPlayerLink)}});
+let q=false;function run(){if(q)return;q=true;requestAnimationFrame(()=>{q=false;decorate()})}
+function start(){decorate();new MutationObserver(run).observe(document.body,{childList:true,subtree:true})}
+document.readyState==="loading"?document.addEventListener("DOMContentLoaded",start):start();
+})();
+</script>
